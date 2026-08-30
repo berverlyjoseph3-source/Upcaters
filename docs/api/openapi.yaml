@@ -1,0 +1,526 @@
+# enterprise-ai-agent-platform/docs/api/openapi.yaml
+openapi: 3.0.3
+info:
+  title: AI Agent Platform API
+  description: Enterprise AI Agent Platform API Documentation
+  version: 1.0.0
+  contact:
+    name: API Support
+    email: api-support@aiagentplatform.com
+  license:
+    name: Proprietary
+    url: https://aiagentplatform.com/license
+
+servers:
+  - url: https://api.aiagentplatform.com/v1
+    description: Production server
+  - url: https://staging-api.aiagentplatform.com/v1
+    description: Staging server
+  - url: http://localhost:3000/v1
+    description: Development server
+
+tags:
+  - name: Authentication
+    description: User authentication endpoints
+  - name: Agents
+    description: AI agent execution endpoints
+  - name: Usage
+    description: Usage metering and analytics
+  - name: Billing
+    description: Subscription and payment endpoints
+  - name: Admin
+    description: Administrative endpoints (admin only)
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    apiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+
+  schemas:
+    Error:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: false
+        error:
+          type: string
+        code:
+          type: string
+      required:
+        - success
+        - error
+
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        name:
+          type: string
+        avatarUrl:
+          type: string
+          format: uri
+        planId:
+          type: string
+          enum: [FREE, STARTER, PROFESSIONAL, ENTERPRISE]
+        role:
+          type: string
+          enum: [USER, ADMIN, SUPPORT]
+        isActive:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+
+    LoginRequest:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          format: password
+        rememberMe:
+          type: boolean
+      required:
+        - email
+        - password
+
+    LoginResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          type: object
+          properties:
+            accessToken:
+              type: string
+            refreshToken:
+              type: string
+            expiresIn:
+              type: integer
+            user:
+              $ref: '#/components/schemas/User'
+
+    AgentExecutionRequest:
+      type: object
+      properties:
+        input:
+          type: string
+        sessionId:
+          type: string
+          format: uuid
+        agentType:
+          type: string
+          enum: [orchestrator, email, drive, content, social, calendar, web, task]
+        stream:
+          type: boolean
+      required:
+        - input
+
+    AgentExecutionResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          type: object
+        metadata:
+          type: object
+          properties:
+            executionTimeMs:
+              type: integer
+            agentType:
+              type: string
+            tokensUsed:
+              type: integer
+            costUsd:
+              type: number
+        error:
+          type: string
+
+    UsageStats:
+      type: object
+      properties:
+        currentPeriod:
+          type: object
+          properties:
+            period:
+              type: string
+            aiActionsUsed:
+              type: integer
+            aiActionsLimit:
+              oneOf:
+                - type: integer
+                - type: string
+            apiCallsUsed:
+              type: integer
+            apiCallsLimit:
+              oneOf:
+                - type: integer
+                - type: string
+            percentageUsed:
+              type: number
+        byAgent:
+          type: object
+        byActionType:
+          type: object
+        historical:
+          type: array
+          items:
+            type: object
+
+    CreateCheckoutRequest:
+      type: object
+      properties:
+        planId:
+          type: string
+          enum: [STARTER, PROFESSIONAL, ENTERPRISE]
+        interval:
+          type: string
+          enum: [month, year]
+        successUrl:
+          type: string
+          format: uri
+        cancelUrl:
+          type: string
+          format: uri
+        couponCode:
+          type: string
+      required:
+        - planId
+        - interval
+
+    CreateCheckoutResponse:
+      type: object
+      properties:
+        sessionId:
+          type: string
+        sessionUrl:
+          type: string
+          format: uri
+
+paths:
+  # Authentication
+  /auth/register:
+    post:
+      tags: [Authentication]
+      summary: Register a new user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+                  format: password
+                name:
+                  type: string
+                acceptTerms:
+                  type: boolean
+              required:
+                - email
+                - password
+                - acceptTerms
+      responses:
+        '201':
+          description: User created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /auth/login:
+    post:
+      tags: [Authentication]
+      summary: Login with email and password
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        '401':
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /auth/refresh:
+    post:
+      tags: [Authentication]
+      summary: Refresh access token
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Token refreshed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+
+  /auth/logout:
+    post:
+      tags: [Authentication]
+      summary: Logout user
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Logout successful
+
+  # Agents
+  /agent/execute:
+    post:
+      tags: [Agents]
+      summary: Execute an agent
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AgentExecutionRequest'
+      responses:
+        '200':
+          description: Execution successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentExecutionResponse'
+        '402':
+          description: Plan limit exceeded
+        '429':
+          description: Usage limit reached
+
+  /agent/stream:
+    post:
+      tags: [Agents]
+      summary: Execute agent with streaming response
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AgentExecutionRequest'
+      responses:
+        '200':
+          description: SSE stream
+          content:
+            text/event-stream:
+              schema:
+                type: string
+
+  /agent/status:
+    get:
+      tags: [Agents]
+      summary: Get agent status
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Agent status retrieved
+
+  # Usage
+  /usage/stats:
+    get:
+      tags: [Usage]
+      summary: Get usage statistics
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: startDate
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: endDate
+          in: query
+          schema:
+            type: string
+            format: date-time
+      responses:
+        '200':
+          description: Usage statistics
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UsageStats'
+
+  /usage/export:
+    get:
+      tags: [Usage]
+      summary: Export usage data as CSV
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: CSV file
+          content:
+            text/csv:
+              schema:
+                type: string
+
+  # Billing
+  /billing/plans:
+    get:
+      tags: [Billing]
+      summary: Get available plans
+      responses:
+        '200':
+          description: List of plans
+
+  /billing/create-checkout:
+    post:
+      tags: [Billing]
+      summary: Create Stripe checkout session
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCheckoutRequest'
+      responses:
+        '200':
+          description: Checkout session created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateCheckoutResponse'
+
+  /billing/subscription:
+    get:
+      tags: [Billing]
+      summary: Get current subscription
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Subscription details
+
+    put:
+      tags: [Billing]
+      summary: Update subscription
+      security:
+        - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                planId:
+                  type: string
+                interval:
+                  type: string
+      responses:
+        '200':
+          description: Subscription updated
+
+    delete:
+      tags: [Billing]
+      summary: Cancel subscription
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Subscription cancelled
+
+  # Admin
+  /admin/users:
+    get:
+      tags: [Admin]
+      summary: List all users
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+        - name: limit
+          in: query
+          schema:
+            type: integer
+        - name: search
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: List of users
+
+  /admin/metrics/platform:
+    get:
+      tags: [Admin]
+      summary: Get platform metrics
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Platform metrics
+
+  # Health
+  /health:
+    get:
+      tags: [Health]
+      summary: Health check
+      responses:
+        '200':
+          description: Service healthy
+
+  /health/ready:
+    get:
+      tags: [Health]
+      summary: Readiness probe
+      responses:
+        '200':
+          description: Ready to serve traffic
+        '503':
+          description: Not ready
+
+  /health/metrics:
+    get:
+      tags: [Health]
+      summary: Prometheus metrics
+      responses:
+        '200':
+          description: Metrics in Prometheus format

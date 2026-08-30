@@ -1,0 +1,211 @@
+# enterprise-ai-agent-platform/helm/ai-agent-platform/values.yaml
+# Default values for ai-agent-platform
+
+# Global settings
+global:
+  environment: production
+  imageRegistry: ""
+  imagePullSecrets: []
+  storageClass: ""
+
+# Application settings
+app:
+  name: ai-agent-platform
+  replicaCount: 3
+  image:
+    repository: ai-agent-platform/api
+    tag: latest
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    port: 3000
+    targetPort: 3000
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "250m"
+    limits:
+      memory: "1Gi"
+      cpu: "1000m"
+  env:
+    - name: NODE_ENV
+      value: "production"
+    - name: PORT
+      value: "3000"
+
+# Worker settings
+worker:
+  enabled: true
+  replicaCount: 2
+  image:
+    repository: ai-agent-platform/worker
+    tag: latest
+    pullPolicy: IfNotPresent
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "250m"
+    limits:
+      memory: "512Mi"
+      cpu: "500m"
+
+# Frontend settings
+frontend:
+  enabled: true
+  replicaCount: 2
+  image:
+    repository: ai-agent-platform/frontend
+    tag: latest
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    port: 80
+    targetPort: 80
+  resources:
+    requests:
+      memory: "128Mi"
+      cpu: "100m"
+    limits:
+      memory: "256Mi"
+      cpu: "200m"
+
+# Database settings
+postgresql:
+  enabled: true
+  image:
+    repository: pgvector/pgvector
+    tag: pg16
+  auth:
+    username: aiagent_user
+    password: ""
+    database: aiagent
+  primary:
+    persistence:
+      enabled: true
+      size: 10Gi
+    resources:
+      requests:
+        memory: "256Mi"
+        cpu: "250m"
+      limits:
+        memory: "512Mi"
+        cpu: "500m"
+
+# Redis settings
+redis:
+  enabled: true
+  image:
+    repository: redis
+    tag: 7-alpine
+  auth:
+    password: ""
+  master:
+    persistence:
+      enabled: true
+      size: 5Gi
+    resources:
+      requests:
+        memory: "128Mi"
+        cpu: "100m"
+      limits:
+        memory: "256Mi"
+        cpu: "200m"
+
+# MongoDB settings
+mongodb:
+  enabled: true
+  image:
+    repository: mongo
+    tag: 7
+  auth:
+    username: admin
+    password: ""
+    database: aiagent
+  persistence:
+    enabled: true
+    size: 10Gi
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "250m"
+    limits:
+      memory: "512Mi"
+      cpu: "500m"
+
+# Ingress settings
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "300"
+  hosts:
+    - host: api.aiagentplatform.com
+      paths:
+        - path: /
+          pathType: Prefix
+    - host: app.aiagentplatform.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: ai-agent-platform-tls
+      hosts:
+        - api.aiagentplatform.com
+        - app.aiagentplatform.com
+
+# Secrets
+secrets:
+  jwtSecret: ""
+  jwtRefreshSecret: ""
+  encryptionKey: ""
+  openaiApiKey: ""
+  anthropicApiKey: ""
+  googleAiApiKey: ""
+  googleClientId: ""
+  googleClientSecret: ""
+  linkedinClientId: ""
+  linkedinClientSecret: ""
+  facebookAppId: ""
+  facebookAppSecret: ""
+  twitterApiKey: ""
+  twitterApiSecret: ""
+  braveSearchApiKey: ""
+  openweathermapApiKey: ""
+  perplexityApiKey: ""
+  stripeSecretKey: ""
+  stripeWebhookSecret: ""
+  sendgridApiKey: ""
+  fromEmail: ""
+
+# Autoscaling
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70
+  targetMemoryUtilizationPercentage: 80
+
+# ServiceMonitor for Prometheus
+serviceMonitor:
+  enabled: true
+  interval: 30s
+  scrapeTimeout: 10s
+
+# Pod Disruption Budget
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+# Network Policy
+networkPolicy:
+  enabled: true
+
+# ServiceAccount
+serviceAccount:
+  create: true
+  name: ai-agent-platform-sa
+  annotations: {}

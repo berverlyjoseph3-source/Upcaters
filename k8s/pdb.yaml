@@ -1,0 +1,73 @@
+# enterprise-ai-agent-platform/k8s/pdb.yaml
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: ai-agent-platform-api-pdb
+  namespace: ai-agent-platform
+  labels:
+    app: ai-agent-platform
+    component: api
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: ai-agent-platform
+      component: api
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: ai-agent-platform-worker-pdb
+  namespace: ai-agent-platform
+  labels:
+    app: ai-agent-platform
+    component: worker
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: ai-agent-platform
+      component: worker
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: ai-agent-platform-frontend-pdb
+  namespace: ai-agent-platform
+  labels:
+    app: ai-agent-platform
+    component: frontend
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: ai-agent-platform
+      component: frontend
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: ai-agent-platform-postgres-pdb
+  namespace: ai-agent-platform
+  labels:
+    app: ai-agent-platform
+    component: database
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: postgres
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: ai-agent-platform-redis-pdb
+  namespace: ai-agent-platform
+  labels:
+    app: ai-agent-platform
+    component: cache
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: redis

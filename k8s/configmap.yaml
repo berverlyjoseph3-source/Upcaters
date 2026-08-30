@@ -1,0 +1,79 @@
+# enterprise-ai-agent-platform/k8s/configmap.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ai-agent-platform-config
+  namespace: ai-agent-platform
+  labels:
+    app: ai-agent-platform
+    component: config
+data:
+  NODE_ENV: "production"
+  LOG_LEVEL: "info"
+  PORT: "3000"
+  API_VERSION: "v1"
+  
+  # Rate Limiting
+  RATE_LIMIT_WINDOW_MS: "60000"
+  RATE_LIMIT_MAX_REQUESTS: "100"
+  RATE_LIMIT_AUTHENTICATED_MAX: "1000"
+  RATE_LIMIT_API_KEY_MAX: "2000"
+  
+  # Usage Limits
+  AI_ACTIONS_LIMIT_FREE: "50"
+  AI_ACTIONS_LIMIT_STARTER: "500"
+  AI_ACTIONS_LIMIT_PROFESSIONAL: "2500"
+  API_CALLS_LIMIT_FREE: "100"
+  API_CALLS_LIMIT_STARTER: "2000"
+  API_CALLS_LIMIT_PROFESSIONAL: "15000"
+  
+  # Action Costs
+  ACTION_COST_EMAIL_PROCESS: "1"
+  ACTION_COST_EMAIL_REPLY: "2"
+  ACTION_COST_CONTENT_TEXT: "3"
+  ACTION_COST_CONTENT_IMAGE: "5"
+  ACTION_COST_CONTENT_VIDEO: "20"
+  ACTION_COST_SOCIAL_POST: "1"
+  ACTION_COST_WEB_SEARCH: "1"
+  ACTION_COST_CALENDAR_SCHEDULE: "1"
+  ACTION_COST_TASK_CREATE: "1"
+  
+  # Cache TTL
+  USAGE_CACHE_TTL: "3600"
+  PLAN_CACHE_TTL: "300"
+  
+  # Retention
+  USAGE_REPORT_RETENTION_DAYS: "90"
+  AUDIT_LOG_RETENTION_DAYS: "365"
+  
+  # Cron Schedules
+  DAILY_DIGEST_CRON: "0 8 * * *"
+  WEEKLY_REPORT_CRON: "0 9 * * 1"
+  DAILY_SYNC_CRON: "0 2 * * *"
+  CLEANUP_CRON: "0 3 * * 0"
+  USAGE_RESET_CRON: "0 0 1 * *"
+  
+  # Feature Flags
+  ENABLE_VIDEO_GENERATION: "true"
+  ENABLE_WHITE_LABEL: "false"
+  ENABLE_CUSTOM_INTEGRATIONS: "true"
+  ENABLE_MAINTENANCE_MODE: "false"
+  EMAIL_VERIFICATION_REQUIRED: "true"
+  REGISTRATION_ENABLED: "true"
+  
+  # Defaults
+  DEFAULT_PLAN: "FREE"
+  TRIAL_DAYS: "14"
+  
+  # Security
+  SESSION_TIMEOUT_MINUTES: "30"
+  MAX_LOGIN_ATTEMPTS: "5"
+  PASSWORD_EXPIRY_DAYS: "90"
+  TWO_FACTOR_REQUIRED: "false"
+  BCRYPT_ROUNDS: "12"
+  
+  # CORS
+  CORS_ORIGINS: "https://app.aiagentplatform.com,https://staging.aiagentplatform.com"
+  
+  # Monitoring
+  SENTRY_TRACES_SAMPLE_RATE: "0.1"

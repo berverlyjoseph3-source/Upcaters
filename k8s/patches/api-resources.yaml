@@ -1,0 +1,23 @@
+# enterprise-ai-agent-platform/k8s/patches/api-resources.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ai-agent-platform-api
+  namespace: ai-agent-platform
+spec:
+  template:
+    spec:
+      containers:
+        - name: api
+          resources:
+            requests:
+              memory: "1Gi"
+              cpu: "1000m"
+            limits:
+              memory: "4Gi"
+              cpu: "4000m"
+          env:
+            - name: NODE_OPTIONS
+              value: "--max-old-space-size=3072"
+            - name: UV_THREADPOOL_SIZE
+              value: "64"

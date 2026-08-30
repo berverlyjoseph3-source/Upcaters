@@ -1,0 +1,19 @@
+# enterprise-ai-agent-platform/k8s/kustomizeconfig.yaml
+# Configuration for Kustomize var substitution
+varReference:
+  - path: spec/template/spec/containers[]/env[]/value
+    kind: Deployment
+  - path: spec/template/spec/containers[]/env[]/valueFrom/secretKeyRef/name
+    kind: Deployment
+  - path: spec/template/spec/containers[]/env[]/valueFrom/configMapKeyRef/name
+    kind: Deployment
+  - path: spec/template/spec/volumes[]/persistentVolumeClaim/claimName
+    kind: StatefulSet
+  - path: spec/volumeClaimTemplates[]/spec/storageClassName
+    kind: StatefulSet
+  - path: spec/rules[]/host
+    kind: Ingress
+  - path: spec/tls[]/hosts[]
+    kind: Ingress
+  - path: metadata/annotations
+    kind: Service

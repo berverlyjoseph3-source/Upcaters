@@ -1,0 +1,226 @@
+# enterprise-ai-agent-platform/helm/ai-agent-platform/values-prod.yaml
+# Production environment values
+
+# Global settings
+global:
+  environment: production
+  imageRegistry: ghcr.io/ai-agent-platform
+  imagePullSecrets:
+    - name: ghcr-secret
+  storageClass: gp3
+
+# Application settings
+app:
+  name: ai-agent-platform
+  replicaCount: 3
+  image:
+    repository: ghcr.io/ai-agent-platform/api
+    tag: latest
+    pullPolicy: Always
+  service:
+    type: ClusterIP
+    port: 3000
+    targetPort: 3000
+  resources:
+    requests:
+      memory: "512Mi"
+      cpu: "500m"
+    limits:
+      memory: "2Gi"
+      cpu: "2000m"
+  env:
+    - name: NODE_ENV
+      value: "production"
+    - name: LOG_LEVEL
+      value: "info"
+    - name: SENTRY_DSN
+      value: ""
+
+# Worker settings
+worker:
+  enabled: true
+  replicaCount: 3
+  image:
+    repository: ghcr.io/ai-agent-platform/worker
+    tag: latest
+    pullPolicy: Always
+  resources:
+    requests:
+      memory: "512Mi"
+      cpu: "500m"
+    limits:
+      memory: "1Gi"
+      cpu: "1000m"
+
+# Frontend settings
+frontend:
+  enabled: true
+  replicaCount: 2
+  image:
+    repository: ghcr.io/ai-agent-platform/frontend
+    tag: latest
+    pullPolicy: Always
+  service:
+    type: ClusterIP
+    port: 80
+    targetPort: 80
+  resources:
+    requests:
+      memory: "128Mi"
+      cpu: "100m"
+    limits:
+      memory: "256Mi"
+      cpu: "200m"
+
+# Database settings
+postgresql:
+  enabled: true
+  image:
+    repository: pgvector/pgvector
+    tag: pg16
+  auth:
+    username: aiagent_user
+    password: ""  # Must be set via --set
+    database: aiagent
+  primary:
+    persistence:
+      enabled: true
+      size: 100Gi
+      storageClass: gp3
+    resources:
+      requests:
+        memory: "1Gi"
+        cpu: "1000m"
+      limits:
+        memory: "2Gi"
+        cpu: "2000m"
+
+# Redis settings
+redis:
+  enabled: true
+  image:
+    repository: redis
+    tag: 7-alpine
+  auth:
+    password: ""  # Must be set via --set
+  master:
+    persistence:
+      enabled: true
+      size: 20Gi
+      storageClass: gp3
+    resources:
+      requests:
+        memory: "512Mi"
+        cpu: "500m"
+      limits:
+        memory: "1Gi"
+        cpu: "1000m"
+
+# MongoDB settings
+mongodb:
+  enabled: true
+  image:
+    repository: mongo
+    tag: 7
+  auth:
+    username: admin
+    password: ""  # Must be set via --set
+    database: aiagent
+  persistence:
+    enabled: true
+    size: 50Gi
+    storageClass: gp3
+  resources:
+    requests:
+      memory: "1Gi"
+      cpu: "1000m"
+    limits:
+      memory: "2Gi"
+      cpu: "2000m"
+
+# Ingress settings
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "300"
+    nginx.ingress.kubernetes.io/rate-limit: "100"
+    nginx.ingress.kubernetes.io/rate-limit-burst: "200"
+    nginx.ingress.kubernetes.io/limit-connections: "10"
+    nginx.ingress.kubernetes.io/limit-rps: "50"
+  hosts:
+    - host: api.aiagentplatform.com
+      paths:
+        - path: /
+          pathType: Prefix
+    - host: app.aiagentplatform.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: ai-agent-platform-tls
+      hosts:
+        - api.aiagentplatform.com
+        - app.aiagentplatform.com
+
+# Secrets (must be set via --set or external secrets operator)
+secrets:
+  databaseUrl: ""
+  redisUrl: ""
+  mongodbUrl: ""
+  jwtSecret: ""
+  jwtRefreshSecret: ""
+  encryptionKey: ""
+  openaiApiKey: ""
+  anthropicApiKey: ""
+  googleAiApiKey: ""
+  googleClientId: ""
+  googleClientSecret: ""
+  linkedinClientId: ""
+  linkedinClientSecret: ""
+  facebookAppId: ""
+  facebookAppSecret: ""
+  twitterApiKey: ""
+  twitterApiSecret: ""
+  braveSearchApiKey: ""
+  openweathermapApiKey: ""
+  perplexityApiKey: ""
+  stripeSecretKey: ""
+  stripeWebhookSecret: ""
+  stripePublishableKey: ""
+  sendgridApiKey: ""
+  fromEmail: ""
+
+# Autoscaling
+autoscaling:
+  enabled: true
+  minReplicas: 3
+  maxReplicas: 20
+  targetCPUUtilizationPercentage: 70
+  targetMemoryUtilizationPercentage: 80
+
+# Pod Disruption Budget
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 2
+
+# Network Policy
+networkPolicy:
+  enabled: true
+
+# ServiceMonitor
+serviceMonitor:
+  enabled: true
+  interval: 30s
+  scrapeTimeout: 10s
+
+# ServiceAccount
+serviceAccount:
+  create: true
+  name: ai-agent-platform-sa
+  annotations:
+    eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/ai-agent-platform-role

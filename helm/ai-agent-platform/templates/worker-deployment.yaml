@@ -1,0 +1,70 @@
+# enterprise-ai-agent-platform/helm/ai-agent-platform/templates/worker-deployment.yaml
+{{- if .Values.worker.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "ai-agent-platform.fullname" . }}-worker
+  labels:
+    {{- include "ai-agent-platform.labels" . | nindent 4 }}
+    component: worker
+spec:
+  replicas: {{ .Values.worker.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "ai-agent-platform.selectorLabels" . | nindent 6 }}
+      component: worker
+  template:
+    metadata:
+      labels:
+        {{- include "ai-agent-platform.selectorLabels" . | nindent 8 }}
+        component: worker
+    spec:
+      serviceAccountName: {{ include "ai-agent-platform.serviceAccountName" . }}
+      containers:
+        - name: worker
+          image: "{{ .Values.worker.image.repository }}:{{ .Values.worker.image.tag }}"
+          imagePullPolicy: {{ .Values.worker.image.pullPolicy }}
+          env:
+            - name: NODE_ENV
+              value: {{ .Values.global.environment }}
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "ai-agent-platform.fullname" . }}-secrets
+                  key: database-url
+            - name: REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "ai-agent-platform.fullname" . }}-secrets
+                  key: redis-url
+            - name: MONGODB_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "ai-agent-platform.fullname" . }}-secrets
+                  key: mongodb-url
+            - name: OPENAI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "ai-agent-platform.fullname" . }}-secrets
+                  key: openai-api-key
+            - name: ANTHROPIC_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "ai-agent-platform.fullname" . }}-secrets
+                  key: anthropic-api-key
+            - name: GOOGLE_AI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "ai-agent-platform.fullname" . }}-secrets
+                  key: google-ai-api-key
+            - name: STRIPE_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "ai-agent-platform.fullname" . }}-secrets
+                  key: stripe-secret-key
+          envFrom:
+            - configMapRef:
+                name: {{ include "ai-agent-platform.fullname" . }}-config
+          resources:
+            {{- toYaml .Values.worker.resources | nindent 12 }}
+{{- end }}

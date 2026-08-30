@@ -1,0 +1,11 @@
+# enterprise-ai-agent-platform/k8s/namespace.yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ai-agent-platform
+  labels:
+    name: ai-agent-platform
+    environment: production
+    istio-injection: enabled
+  annotations:
+    description: "AI Agent Platform Production Namespace"

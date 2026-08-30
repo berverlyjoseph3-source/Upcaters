@@ -1,0 +1,30 @@
+# enterprise-ai-agent-platform/apps/api/Dockerfile.dev
+FROM node:20-alpine
+
+WORKDIR /app
+
+# Install dependencies for Prisma
+RUN apk add --no-cache openssl
+
+# Copy package files
+COPY package*.json ./
+COPY prisma ./prisma/
+
+# Install dependencies
+RUN npm ci
+
+# Generate Prisma client
+RUN npx prisma generate
+
+# Copy source code
+COPY . .
+
+# Expose port
+EXPOSE 3000
+EXPOSE 9229
+
+# Install nodemon for hot reload
+RUN npm install -g nodemon
+
+# Development command with debugging
+CMD ["nodemon", "--inspect=0.0.0.0:9229", "src/index.ts"]

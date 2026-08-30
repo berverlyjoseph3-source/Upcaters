@@ -1,0 +1,48 @@
+# enterprise-ai-agent-platform/helm/ai-agent-platform/templates/pdb.yaml
+{{- if .Values.podDisruptionBudget.enabled }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "ai-agent-platform.fullname" . }}-api
+  labels:
+    {{- include "ai-agent-platform.labels" . | nindent 4 }}
+    component: api
+spec:
+  minAvailable: {{ .Values.podDisruptionBudget.minAvailable }}
+  selector:
+    matchLabels:
+      {{- include "ai-agent-platform.selectorLabels" . | nindent 6 }}
+      component: api
+---
+{{- if .Values.frontend.enabled }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "ai-agent-platform.fullname" . }}-frontend
+  labels:
+    {{- include "ai-agent-platform.labels" . | nindent 4 }}
+    component: frontend
+spec:
+  minAvailable: {{ .Values.podDisruptionBudget.minAvailable }}
+  selector:
+    matchLabels:
+      {{- include "ai-agent-platform.selectorLabels" . | nindent 6 }}
+      component: frontend
+{{- end }}
+---
+{{- if .Values.worker.enabled }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "ai-agent-platform.fullname" . }}-worker
+  labels:
+    {{- include "ai-agent-platform.labels" . | nindent 4 }}
+    component: worker
+spec:
+  minAvailable: {{ .Values.podDisruptionBudget.minAvailable }}
+  selector:
+    matchLabels:
+      {{- include "ai-agent-platform.selectorLabels" . | nindent 6 }}
+      component: worker
+{{- end }}
+{{- end }}

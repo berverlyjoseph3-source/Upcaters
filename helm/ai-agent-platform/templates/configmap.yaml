@@ -1,0 +1,46 @@
+# enterprise-ai-agent-platform/helm/ai-agent-platform/templates/configmap.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "ai-agent-platform.fullname" . }}-config
+  labels:
+    {{- include "ai-agent-platform.labels" . | nindent 4 }}
+data:
+  NODE_ENV: {{ .Values.global.environment | quote }}
+  LOG_LEVEL: "info"
+  API_VERSION: "v1"
+  CORS_ORIGINS: {{ .Values.ingress.hosts | first | first | quote }}
+  RATE_LIMIT_WINDOW_MS: "60000"
+  RATE_LIMIT_MAX_REQUESTS: "100"
+  RATE_LIMIT_AUTHENTICATED_MAX: "1000"
+  USAGE_CACHE_TTL: "3600"
+  PLAN_CACHE_TTL: "300"
+  USAGE_REPORT_RETENTION_DAYS: "90"
+  WEEKLY_DIGEST_CRON: "0 9 * * 1"
+  DAILY_SYNC_CRON: "0 2 * * *"
+  CLEANUP_CRON: "0 3 * * 0"
+  MAINTENANCE_MODE: "false"
+  REGISTRATION_ENABLED: "true"
+  EMAIL_VERIFICATION_REQUIRED: "true"
+  DEFAULT_PLAN: "FREE"
+  TRIAL_DAYS: "14"
+  SESSION_TIMEOUT: "30"
+  MAX_LOGIN_ATTEMPTS: "5"
+  TWO_FACTOR_REQUIRED: "false"
+  AI_ACTIONS_LIMIT_FREE: "50"
+  AI_ACTIONS_LIMIT_STARTER: "500"
+  AI_ACTIONS_LIMIT_PROFESSIONAL: "2500"
+  AI_ACTIONS_LIMIT_ENTERPRISE: "unlimited"
+  API_CALLS_LIMIT_FREE: "100"
+  API_CALLS_LIMIT_STARTER: "2000"
+  API_CALLS_LIMIT_PROFESSIONAL: "15000"
+  API_CALLS_LIMIT_ENTERPRISE: "unlimited"
+  ACTION_COST_EMAIL_PROCESS: "1"
+  ACTION_COST_EMAIL_REPLY: "2"
+  ACTION_COST_CONTENT_TEXT: "3"
+  ACTION_COST_CONTENT_IMAGE: "5"
+  ACTION_COST_CONTENT_VIDEO: "20"
+  ACTION_COST_SOCIAL_POST: "1"
+  ACTION_COST_WEB_SEARCH: "1"
+  ACTION_COST_CALENDAR_SCHEDULE: "1"
+  ACTION_COST_TASK_CREATE: "1"

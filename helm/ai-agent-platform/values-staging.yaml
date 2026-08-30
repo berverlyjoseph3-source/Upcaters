@@ -1,0 +1,167 @@
+# enterprise-ai-agent-platform/helm/ai-agent-platform/values-staging.yaml
+# Staging environment values
+
+# Global settings
+global:
+  environment: staging
+  imageRegistry: ghcr.io
+  imagePullSecrets:
+    - name: ghcr-secret
+  storageClass: gp2
+
+# Application settings
+app:
+  name: ai-agent-platform
+  replicaCount: 2
+  image:
+    repository: ghcr.io/ai-agent-platform/api
+    tag: latest
+    pullPolicy: Always
+  service:
+    type: ClusterIP
+    port: 3000
+    targetPort: 3000
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "250m"
+    limits:
+      memory: "512Mi"
+      cpu: "500m"
+  env:
+    - name: NODE_ENV
+      value: "staging"
+    - name: LOG_LEVEL
+      value: "debug"
+    - name: SENTRY_DSN
+      value: ""
+
+# Worker settings
+worker:
+  enabled: true
+  replicaCount: 1
+  image:
+    repository: ghcr.io/ai-agent-platform/worker
+    tag: latest
+    pullPolicy: Always
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "250m"
+    limits:
+      memory: "512Mi"
+      cpu: "500m"
+
+# Frontend settings
+frontend:
+  enabled: true
+  replicaCount: 1
+  image:
+    repository: ghcr.io/ai-agent-platform/frontend
+    tag: latest
+    pullPolicy: Always
+  service:
+    type: ClusterIP
+    port: 80
+    targetPort: 80
+  resources:
+    requests:
+      memory: "128Mi"
+      cpu: "100m"
+    limits:
+      memory: "256Mi"
+      cpu: "200m"
+
+# Database settings (using managed services in staging)
+postgresql:
+  enabled: false  # Use AWS RDS instead
+
+redis:
+  enabled: false  # Use AWS ElastiCache instead
+
+mongodb:
+  enabled: false  # Use AWS DocumentDB instead
+
+# Ingress settings
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-staging
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: "20m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "120"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "120"
+    nginx.ingress.kubernetes.io/rate-limit: "200"
+    nginx.ingress.kubernetes.io/rate-limit-burst: "400"
+  hosts:
+    - host: staging-api.aiagentplatform.com
+      paths:
+        - path: /
+          pathType: Prefix
+    - host: staging-app.aiagentplatform.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: ai-agent-platform-staging-tls
+      hosts:
+        - staging-api.aiagentplatform.com
+        - staging-app.aiagentplatform.com
+
+# Secrets (must be set via --set)
+secrets:
+  databaseUrl: ""
+  redisUrl: ""
+  mongodbUrl: ""
+  jwtSecret: ""
+  jwtRefreshSecret: ""
+  encryptionKey: ""
+  openaiApiKey: ""
+  anthropicApiKey: ""
+  googleAiApiKey: ""
+  googleClientId: ""
+  googleClientSecret: ""
+  linkedinClientId: ""
+  linkedinClientSecret: ""
+  facebookAppId: ""
+  facebookAppSecret: ""
+  twitterApiKey: ""
+  twitterApiSecret: ""
+  braveSearchApiKey: ""
+  openweathermapApiKey: ""
+  perplexityApiKey: ""
+  stripeSecretKey: ""
+  stripeWebhookSecret: ""
+  stripePublishableKey: ""
+  sendgridApiKey: ""
+  fromEmail: ""
+
+# Autoscaling
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70
+  targetMemoryUtilizationPercentage: 80
+
+# Pod Disruption Budget
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+# Network Policy
+networkPolicy:
+  enabled: true
+
+# ServiceMonitor
+serviceMonitor:
+  enabled: true
+  interval: 30s
+  scrapeTimeout: 10s
+
+# ServiceAccount
+serviceAccount:
+  create: true
+  name: ai-agent-platform-staging-sa
+  annotations: {}

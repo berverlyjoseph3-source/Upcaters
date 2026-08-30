@@ -1,0 +1,168 @@
+# enterprise-ai-agent-platform/k8s/grafana-dashboards.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboards-ai-agent
+  namespace: monitoring
+  labels:
+    grafana_dashboard: "1"
+data:
+  ai-agent-platform-overview.json: |
+    {
+      "dashboard": {
+        "title": "AI Agent Platform - Overview",
+        "uid": "ai-agent-overview",
+        "version": 1,
+        "timezone": "browser",
+        "panels": [
+          {
+            "title": "API Requests Rate",
+            "type": "graph",
+            "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+            "targets": [{"expr": "sum(rate(http_requests_total[5m])) by (method, path)", "legendFormat": "{{method}} {{path}}"}]
+          },
+          {
+            "title": "API Error Rate",
+            "type": "graph",
+            "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+            "targets": [{"expr": "sum(rate(http_requests_total{status=~\"5..\"}[5m])) / sum(rate(http_requests_total[5m])) * 100", "legendFormat": "Error Rate"}]
+          },
+          {
+            "title": "P95 Latency",
+            "type": "graph",
+            "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+            "targets": [{"expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (le, method, path))", "legendFormat": "{{method}} {{path}}"}]
+          },
+          {
+            "title": "Active Users",
+            "type": "graph",
+            "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+            "targets": [{"expr": "sum(active_users_total)", "legendFormat": "Active Users"}]
+          },
+          {
+            "title": "CPU Usage",
+            "type": "graph",
+            "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16},
+            "targets": [{"expr": "sum(rate(container_cpu_usage_seconds_total{namespace=\"ai-agent-platform\"}[5m])) by (pod)", "legendFormat": "{{pod}}"}]
+          },
+          {
+            "title": "Memory Usage",
+            "type": "graph",
+            "gridPos": {"h": 8, "w": 12, "x": 12, "y": 16},
+            "targets": [{"expr": "sum(container_memory_working_set_bytes{namespace=\"ai-agent-platform\"}) by (pod)", "legendFormat": "{{pod}}"}]
+          }
+        ]
+      }
+    }
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboards-agents
+  namespace: monitoring
+  labels:
+    grafana_dashboard: "1"
+data:
+  ai-agent-platform-agents.json: |
+    {
+      "dashboard": {
+        "title": "AI Agent Platform - Agents",
+        "uid": "ai-agent-agents",
+        "version": 1,
+        "timezone": "browser",
+        "panels": [
+          {
+            "title": "Agent Executions by Type",
+            "type": "barchart",
+            "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+            "targets": [{"expr": "sum(agent_executions_total) by (agent_type)", "legendFormat": "{{agent_type}}"}]
+          },
+          {
+            "title": "Agent Success Rate",
+            "type": "stat",
+            "gridPos": {"h": 4, "w": 6, "x": 12, "y": 0},
+            "targets": [{"expr": "sum(agent_executions_total{status=\"success\"}) / sum(agent_executions_total) * 100"}]
+          },
+          {
+            "title": "Agent Error Rate",
+            "type": "stat",
+            "gridPos": {"h": 4, "w": 6, "x": 18, "y": 0},
+            "targets": [{"expr": "sum(agent_executions_total{status=\"error\"}) / sum(agent_executions_total) * 100"}]
+          },
+          {
+            "title": "Average Execution Time by Agent",
+            "type": "barchart",
+            "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+            "targets": [{"expr": "avg(agent_execution_duration_seconds) by (agent_type)", "legendFormat": "{{agent_type}}"}]
+          },
+          {
+            "title": "Cost by Agent",
+            "type": "piechart",
+            "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+            "targets": [{"expr": "sum(agent_cost_total) by (agent_type)", "legendFormat": "{{agent_type}}"}]
+          },
+          {
+            "title": "Executions per Hour",
+            "type": "heatmap",
+            "gridPos": {"h": 8, "w": 24, "x": 0, "y": 16},
+            "targets": [{"expr": "sum(increase(agent_executions_total[$__interval]))"}]
+          }
+        ]
+      }
+    }
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboards-database
+  namespace: monitoring
+  labels:
+    grafana_dashboard: "1"
+data:
+  ai-agent-platform-database.json: |
+    {
+      "dashboard": {
+        "title": "AI Agent Platform - Database",
+        "uid": "ai-agent-database",
+        "version": 1,
+        "timezone": "browser",
+        "panels": [
+          {
+            "title": "PostgreSQL Connections",
+            "type": "graph",
+            "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+            "targets": [{"expr": "pg_stat_database_numbackends{datname=\"aiagent\"}", "legendFormat": "Connections"}]
+          },
+          {
+            "title": "PostgreSQL Transactions per Second",
+            "type": "graph",
+            "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+            "targets": [{"expr": "rate(pg_stat_database_xact_commit{datname=\"aiagent\"}[5m])", "legendFormat": "Commits"}, {"expr": "rate(pg_stat_database_xact_rollback{datname=\"aiagent\"}[5m])", "legendFormat": "Rollbacks"}]
+          },
+          {
+            "title": "Redis Memory Usage",
+            "type": "gauge",
+            "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+            "targets": [{"expr": "redis_memory_used_bytes / redis_memory_max_bytes * 100", "legendFormat": "Memory Usage"}]
+          },
+          {
+            "title": "Redis Hit Rate",
+            "type": "graph",
+            "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+            "targets": [{"expr": "redis_keyspace_hits_total / (redis_keyspace_hits_total + redis_keyspace_misses_total) * 100", "legendFormat": "Hit Rate"}]
+          },
+          {
+            "title": "MongoDB Operations per Second",
+            "type": "graph",
+            "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16},
+            "targets": [{"expr": "rate(mongodb_op_counters_total[5m])", "legendFormat": "{{op}}"}]
+          },
+          {
+            "title": "MongoDB Active Connections",
+            "type": "graph",
+            "gridPos": {"h": 8, "w": 12, "x": 12, "y": 16},
+            "targets": [{"expr": "mongodb_connections{state=\"current\"}", "legendFormat": "Active Connections"}]
+          }
+        ]
+      }
+    }

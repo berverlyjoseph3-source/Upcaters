@@ -1,0 +1,67 @@
+# enterprise-ai-agent-platform/k8s/kustomization.yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: ai-agent-platform
+
+resources:
+  - namespace.yaml
+  - configmap.yaml
+  - secrets.yaml
+  - service-account.yaml
+  - deployment.yaml
+  - worker-deployment.yaml
+  - frontend-deployment.yaml
+  - postgres-statefulset.yaml
+  - redis-statefulset.yaml
+  - mongodb-statefulset.yaml
+  - service.yaml
+  - ingress.yaml
+  - hpa.yaml
+  - pdb.yaml
+  - network-policy.yaml
+  - service-monitor.yaml
+  - pvc.yaml
+
+commonLabels:
+  app: ai-agent-platform
+  managed-by: kustomize
+
+images:
+  - name: ghcr.io/ai-agent-platform/api
+    newTag: latest
+  - name: ghcr.io/ai-agent-platform/worker
+    newTag: latest
+  - name: ghcr.io/ai-agent-platform/frontend
+    newTag: latest
+
+configMapGenerator:
+  - name: ai-agent-platform-config
+    behavior: merge
+    literals:
+      - NODE_ENV=production
+      - LOG_LEVEL=info
+
+secretGenerator:
+  - name: ai-agent-platform-secrets
+    behavior: merge
+    literals:
+      - JWT_SECRET=change-me-in-production
+      - JWT_REFRESH_SECRET=change-me-in-production
+
+patchesStrategicMerge:
+  - patches/api-resources.yaml
+  - patches/worker-resources.yaml
+  - patches/frontend-resources.yaml
+
+vars:
+  - name: NAMESPACE
+    objref:
+      kind: Namespace
+      name: ai-agent-platform
+      apiVersion: v1
+    fieldref:
+      fieldpath: metadata.name
+
+configurations:
+  - kustomizeconfig.yaml

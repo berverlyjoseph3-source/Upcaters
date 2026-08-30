@@ -1,0 +1,173 @@
+# enterprise-ai-agent-platform/k8s/service-monitor.yaml
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: ai-agent-platform-api-monitor
+  namespace: ai-agent-platform
+  labels:
+    app: ai-agent-platform
+    component: monitoring
+    release: prometheus
+spec:
+  selector:
+    matchLabels:
+      app: ai-agent-platform
+      component: api
+  endpoints:
+    - port: http
+      path: /health/metrics
+      interval: 30s
+      scrapeTimeout: 10s
+      honorLabels: true
+      metricRelabelings:
+        - sourceLabels: [__name__]
+          regex: 'process_cpu_seconds_total|process_resident_memory_bytes|nodejs_eventloop_lag_seconds|http_requests_total|http_request_duration_seconds'
+          action: keep
+      relabelings:
+        - sourceLabels: [namespace, pod]
+          separator: /
+          targetLabel: instance
+          replacement: $1/$2
+          action: replace
+        - sourceLabels: [__meta_kubernetes_pod_label_component]
+          targetLabel: component
+          action: replace
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: ai-agent-platform-worker-monitor
+  namespace: ai-agent-platform
+  labels:
+    app: ai-agent-platform
+    component: monitoring
+    release: prometheus
+spec:
+  selector:
+    matchLabels:
+      app: ai-agent-platform
+      component: worker
+  endpoints:
+    - port: http
+      path: /health/metrics
+      interval: 30s
+      scrapeTimeout: 10s
+      honorLabels: true
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: ai-agent-platform-postgres-monitor
+  namespace: ai-agent-platform
+  labels:
+    app: ai-agent-platform
+    component: monitoring
+    release: prometheus
+spec:
+  selector:
+    matchLabels:
+      app: postgres
+  endpoints:
+    - port: postgres
+      interval: 30s
+      scrapeTimeout: 10s
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: ai-agent-platform-redis-monitor
+  namespace: ai-agent-platform
+  labels:
+    app: ai-agent-platform
+    component: monitoring
+    release: prometheus
+spec:
+  selector:
+    matchLabels:
+      app: redis
+  endpoints:
+    - port: redis
+      interval: 30s
+      scrapeTimeout: 10s
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: ai-agent-platform-alerts
+  namespace: ai-agent-platform
+  labels:
+    app: ai-agent-platform
+    component: monitoring
+    release: prometheus
+spec:
+  groups:
+    - name: ai-agent-platform-alerts
+      interval: 30s
+      rules:
+        - alert: HighAPIErrorRate
+          expr: rate(http_requests_total{status=~"5.."}[5m]) / rate(http_requests_total[5m]) > 0.05
+          for: 5m
+          labels:
+            severity: critical
+            component: api
+          annotations:
+            summary: "High API error rate"
+            description: "API error rate is above 5% for the last 5 minutes"
+        
+        - alert: HighAPILatency
+          expr: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m])) > 1
+          for: 5m
+          labels:
+            severity: warning
+            component: api
+          annotations:
+            summary: "High API latency"
+            description: "API p95 latency is above 1 second for the last 5 minutes"
+        
+        - alert: DatabaseConnectionPoolExhausted
+          expr: pg_stat_database_numbackends > 80
+          for: 5m
+          labels:
+            severity: critical
+            component: database
+          annotations:
+            summary: "Database connection pool exhausted"
+            description: "Database connections are above 80% of limit"
+        
+        - alert: RedisMemoryHigh
+          expr: redis_memory_used_bytes / redis_memory_max_bytes > 0.8
+          for: 5m
+          labels:
+            severity: warning
+            component: cache
+          annotations:
+            summary: "Redis memory usage high"
+            description: "Redis memory usage is above 80%"
+        
+        - alert: QueueLengthHigh
+          expr: bullmq_jobs_waiting > 1000
+          for: 10m
+          labels:
+            severity: warning
+            component: worker
+          annotations:
+            summary: "Queue length high"
+            description: "BullMQ queue has more than 1000 waiting jobs"
+        
+        - alert: PodRestarting
+          expr: kube_pod_container_status_restarts_total > 5
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Pod restarting frequently"
+            description: "Pod {{ $labels.pod }} has restarted {{ $value }} times in the last 15 minutes"
+        
+        - alert: ServiceDown
+          expr: up == 0
+          for: 1m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Service is down"
+            description: "Service {{ $labels.job }} is down for more than 1 minute"

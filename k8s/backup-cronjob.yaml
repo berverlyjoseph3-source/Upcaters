@@ -1,0 +1,175 @@
+# enterprise-ai-agent-platform/k8s/backup-cronjob.yaml
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: database-backup
+  namespace: ai-agent-platform
+  labels:
+    app: ai-agent-platform
+    component: backup
+spec:
+  schedule: "0 2 * * *"  # Run at 2 AM daily
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            app: ai-agent-platform
+            component: backup-job
+        spec:
+          serviceAccountName: ai-agent-platform-sa
+          restartPolicy: OnFailure
+          containers:
+            - name: backup
+              image: postgres:15-alpine
+              imagePullPolicy: IfNotPresent
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  set -e
+                  BACKUP_FILE="/backup/aiagent_$(date +%Y%m%d_%H%M%S).dump"
+                  echo "Starting database backup..."
+                  
+                  # PostgreSQL backup
+                  PGPASSWORD=$POSTGRES_PASSWORD pg_dump -h postgres -U $POSTGRES_USER -d $POSTGRES_DB \
+                    --format=custom \
+                    --compress=9 \
+                    --file=$BACKUP_FILE
+                  
+                  echo "PostgreSQL backup completed: $BACKUP_FILE"
+                  
+                  # Upload to S3 if AWS credentials are available
+                  if [ -n "$AWS_ACCESS_KEY_ID" ]; then
+                    echo "Uploading backup to S3..."
+                    aws s3 cp $BACKUP_FILE s3://$AWS_S3_BUCKET/backups/postgres/$(date +%Y/%m/%d)/$(basename $BACKUP_FILE)
+                    echo "S3 upload completed"
+                  fi
+                  
+                  # Keep only last 7 days of local backups
+                  find /backup -name "*.dump" -mtime +7 -delete
+                  
+                  echo "Backup completed successfully"
+              env:
+                - name: POSTGRES_HOST
+                  value: "postgres"
+                - name: POSTGRES_USER
+                  valueFrom:
+                    secretKeyRef:
+                      name: ai-agent-platform-secrets
+                      key: postgres-user
+                - name: POSTGRES_PASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: ai-agent-platform-secrets
+                      key: postgres-password
+                - name: POSTGRES_DB
+                  valueFrom:
+                    secretKeyRef:
+                      name: ai-agent-platform-secrets
+                      key: postgres-db
+                - name: AWS_ACCESS_KEY_ID
+                  valueFrom:
+                    secretKeyRef:
+                      name: ai-agent-platform-secrets
+                      key: aws-access-key-id
+                      optional: true
+                - name: AWS_SECRET_ACCESS_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: ai-agent-platform-secrets
+                      key: aws-secret-access-key
+                      optional: true
+                - name: AWS_S3_BUCKET
+                  valueFrom:
+                    configMapKeyRef:
+                      name: ai-agent-platform-config
+                      key: aws-s3-bucket
+                      optional: true
+                - name: AWS_REGION
+                  value: "us-east-1"
+              volumeMounts:
+                - name: backup-storage
+                  mountPath: /backup
+              resources:
+                requests:
+                  memory: "256Mi"
+                  cpu: "250m"
+                limits:
+                  memory: "512Mi"
+                  cpu: "500m"
+          volumes:
+            - name: backup-storage
+              persistentVolumeClaim:
+                claimName: ai-agent-platform-backup-pvc
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: redis-backup
+  namespace: ai-agent-platform
+  labels:
+    app: ai-agent-platform
+    component: backup
+spec:
+  schedule: "0 3 * * *"  # Run at 3 AM daily
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            app: ai-agent-platform
+            component: backup-job
+        spec:
+          serviceAccountName: ai-agent-platform-sa
+          restartPolicy: OnFailure
+          containers:
+            - name: redis-backup
+              image: redis:7-alpine
+              imagePullPolicy: IfNotPresent
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  set -e
+                  BACKUP_FILE="/backup/redis_$(date +%Y%m%d_%H%M%S).rdb"
+                  echo "Starting Redis backup..."
+                  
+                  # Trigger Redis SAVE
+                  redis-cli -h redis -a $REDIS_PASSWORD SAVE
+                  
+                  # Copy the dump file
+                  kubectl cp redis-0:/data/dump.rdb $BACKUP_FILE -n ai-agent-platform
+                  
+                  echo "Redis backup completed: $BACKUP_FILE"
+                  
+                  # Keep only last 7 days
+                  find /backup -name "redis_*.rdb" -mtime +7 -delete
+                  
+                  echo "Redis backup completed successfully"
+              env:
+                - name: REDIS_PASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: ai-agent-platform-secrets
+                      key: redis-password
+              volumeMounts:
+                - name: backup-storage
+                  mountPath: /backup
+              resources:
+                requests:
+                  memory: "128Mi"
+                  cpu: "100m"
+                limits:
+                  memory: "256Mi"
+                  cpu: "200m"
+          volumes:
+            - name: backup-storage
+              persistentVolumeClaim:
+                claimName: ai-agent-platform-backup-pvc

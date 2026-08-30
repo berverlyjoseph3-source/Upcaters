@@ -1,0 +1,637 @@
+// enterprise-ai-agent-platform/apps/api/prisma/schema.prisma
+generator client {
+  provider = "prisma-client-js"
+  output   = "../node_modules/.prisma/client"
+}
+
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// ENUMS
+// ============================================
+
+enum UserRole {
+  USER
+  ADMIN
+  SUPPORT
+}
+
+enum OAuthProvider {
+  GOOGLE_GMAIL
+  GOOGLE_DRIVE
+  GOOGLE_CALENDAR
+  GOOGLE_TASKS
+  LINKEDIN
+  FACEBOOK
+  INSTAGRAM
+  X_TWITTER
+  MICROSOFT_GRAPH
+  ASANA
+  MONDAY_COM
+  SLACK
+  GITHUB
+}
+
+enum SyncStatus {
+  PENDING
+  SYNCING
+  SUCCESS
+  ERROR
+  DISCONNECTED
+}
+
+enum AgentType {
+  ORCHESTRATOR
+  EMAIL
+  DRIVE
+  CONTENT
+  SOCIAL
+  CALENDAR
+  WEB
+  TASK
+}
+
+enum ExecutionStatus {
+  PENDING
+  RUNNING
+  SUCCESS
+  ERROR
+  CANCELLED
+  RETRYING
+  TIMEOUT
+}
+
+enum MemoryType {
+  SHORT_TERM
+  LONG_TERM
+  EPISODIC
+  SEMANTIC
+  PROCEDURAL
+}
+
+enum SocialPlatform {
+  LINKEDIN
+  INSTAGRAM
+  FACEBOOK
+  X_TWITTER
+  THREADS
+  TIKTOK
+  YOUTUBE
+  PINTEREST
+}
+
+enum PostStatus {
+  SCHEDULED
+  PROCESSING
+  PUBLISHED
+  FAILED
+  CANCELLED
+  RETRYING
+}
+
+enum ContentType {
+  TEXT
+  IMAGE
+  VIDEO
+  AUDIO
+  CODE
+  TRANSLATION
+  SUMMARIZATION
+  ANALYSIS
+}
+
+enum GenerationStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum EmailStatus {
+  PENDING
+  SENT
+  FAILED
+  BOUNCED
+  OPENED
+  CLICKED
+}
+
+// ============================================
+// CORE USER MODEL
+// ============================================
+
+model User {
+  id                   String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email                String    @unique @db.VarChar(255)
+  passwordHash         String?   @map("password_hash") @db.VarChar(255)
+  name                 String?   @db.VarChar(255)
+  avatarUrl            String?   @map("avatar_url") @db.Text
+  planId               String    @default("FREE") @map("plan_id") @db.VarChar(50)
+  planStartedAt        DateTime  @default(now()) @map("plan_started_at") @db.Timestamp(6)
+  planExpiresAt        DateTime? @map("plan_expires_at") @db.Timestamp(6)
+  stripeCustomerId     String?   @unique @map("stripe_customer_id") @db.VarChar(255)
+  stripeSubscriptionId String?   @unique @map("stripe_subscription_id") @db.VarChar(255)
+  apiKey               String?   @unique @map("api_key") @db.VarChar(64)
+  apiKeyPrefix         String?   @map("api_key_prefix") @db.VarChar(8)
+  isActive             Boolean   @default(true) @map("is_active")
+  isEmailVerified      Boolean   @default(false) @map("is_email_verified")
+  emailVerifiedAt      DateTime? @map("email_verified_at") @db.Timestamp(6)
+  role                 UserRole  @default(USER)
+  lastLoginAt          DateTime? @map("last_login_at") @db.Timestamp(6)
+  metadata             Json?     @map("metadata")
+  createdAt            DateTime  @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt            DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamp(6)
+
+  // Relations
+  oauthConnections        OAuthConnection[]
+  agentExecutions         AgentExecution[]
+  usageLogs               UsageLog[]
+  agentMemory             AgentMemory[]
+  scheduledPosts          ScheduledPost[]
+  webhookEvents           WebhookEvent[]
+  emailQueues             EmailQueue[]
+  notificationPreferences NotificationPreference?
+  auditLogs               AuditLog[]
+  sessions                Session[]
+  apiKeys                 ApiKey[]
+  planHistory             PlanHistory[]
+  billingInvoices         BillingInvoice[]
+  contentGenerations      ContentGeneration[]
+  passwordResetTokens     PasswordResetToken[]
+  emailVerificationTokens EmailVerificationToken[]
+
+  @@index([email])
+  @@index([planId])
+  @@index([stripeCustomerId])
+  @@index([apiKey])
+  @@map("users")
+}
+
+// ============================================
+// OAUTH CONNECTIONS
+// ============================================
+
+model OAuthConnection {
+  id             String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId         String        @map("user_id") @db.Uuid
+  provider       OAuthProvider
+  accessToken    String        @map("access_token") @db.Text
+  refreshToken   String?       @map("refresh_token") @db.Text
+  expiresAt      DateTime?     @map("expires_at") @db.Timestamp(6)
+  scope          String?       @db.Text
+  providerUserId String?       @map("provider_user_id") @db.VarChar(255)
+  providerEmail  String?       @map("provider_email") @db.VarChar(255)
+  webhookUrl     String?       @map("webhook_url") @db.Text
+  lastSyncedAt   DateTime?     @map("last_synced_at") @db.Timestamp(6)
+  syncStatus     SyncStatus    @default(PENDING)
+  syncError      String?       @map("sync_error") @db.Text
+  createdAt      DateTime      @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt      DateTime      @default(now()) @updatedAt @map("updated_at") @db.Timestamp(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, provider])
+  @@index([provider, providerUserId])
+  @@index([syncStatus])
+  @@map("oauth_connections")
+}
+
+// ============================================
+// AGENT EXECUTION LOGS
+// ============================================
+
+model AgentExecution {
+  id           String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId       String          @map("user_id") @db.Uuid
+  sessionId    String?         @map("session_id") @db.Uuid
+  agentType    AgentType
+  actionType   String          @map("action_type") @db.VarChar(100)
+  input        Json?
+  output       Json?
+  tokensUsed   Int             @default(0) @map("tokens_used")
+  costUsd      Decimal         @default(0) @map("cost_usd") @db.Decimal(10, 6)
+  status       ExecutionStatus @default(PENDING)
+  errorMessage String?         @map("error_message") @db.Text
+  errorStack   String?         @map("error_stack") @db.Text
+  durationMs   Int?            @map("duration_ms")
+  retryCount   Int             @default(0) @map("retry_count")
+  metadata     Json?
+  ipAddress    String?         @map("ip_address") @db.VarChar(45)
+  userAgent    String?         @map("user_agent") @db.Text
+  createdAt    DateTime        @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt    DateTime        @updatedAt @map("updated_at") @db.Timestamp(6)
+  completedAt  DateTime?       @map("completed_at") @db.Timestamp(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([agentType, status])
+  @@index([sessionId])
+  @@index([createdAt])
+  @@map("agent_executions")
+}
+
+// ============================================
+// USAGE TRACKING
+// ============================================
+
+model UsageLog {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId        String   @map("user_id") @db.Uuid
+  billingPeriod String   @map("billing_period") @db.VarChar(7)
+  actionType    String   @map("action_type") @db.VarChar(100)
+  count         Int      @default(0)
+  tokensUsed    BigInt   @default(0) @map("tokens_used")
+  costUsd       Decimal  @default(0) @map("cost_usd") @db.Decimal(12, 6)
+  lastResetAt   DateTime @default(now()) @map("last_reset_at") @db.Timestamp(6)
+  updatedAt     DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamp(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, billingPeriod, actionType])
+  @@index([userId, billingPeriod])
+  @@index([billingPeriod])
+  @@map("usage_logs")
+}
+
+// ============================================
+// AGENT MEMORY (with Vector Embeddings)
+// ============================================
+
+model AgentMemory {
+  id             String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId         String                 @map("user_id") @db.Uuid
+  sessionId      String?                @map("session_id") @db.Uuid
+  agentType      AgentType?
+  memoryType     MemoryType             @default(SHORT_TERM)
+  content        String                 @db.Text
+  embedding      Unsupported("vector")?
+  metadata       Json?
+  importance     Float                  @default(0.5)
+  accessCount    Int                    @default(0) @map("access_count")
+  lastAccessedAt DateTime?              @map("last_accessed_at") @db.Timestamp(6)
+  ttlHours       Int?                   @map("ttl_hours")
+  createdAt      DateTime               @default(now()) @map("created_at") @db.Timestamp(6)
+  expiresAt      DateTime?              @map("expires_at") @db.Timestamp(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, memoryType])
+  @@index([sessionId])
+  @@index([agentType])
+  @@index([expiresAt])
+  @@map("agent_memory")
+}
+
+// ============================================
+// SCHEDULED SOCIAL MEDIA POSTS
+// ============================================
+
+model ScheduledPost {
+  id           String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId       String         @map("user_id") @db.Uuid
+  platform     SocialPlatform
+  content      String         @db.Text
+  mediaUrls    Json           @default("[]") @map("media_urls")
+  metadata     Json?
+  scheduledAt  DateTime       @map("scheduled_at") @db.Timestamp(6)
+  status       PostStatus     @default(SCHEDULED)
+  publishedAt  DateTime?      @map("published_at") @db.Timestamp(6)
+  postId       String?        @map("post_id") @db.VarChar(255)
+  postUrl      String?        @map("post_url") @db.Text
+  errorMessage String?        @map("error_message") @db.Text
+  retryCount   Int            @default(0) @map("retry_count")
+  lastRetryAt  DateTime?      @map("last_retry_at") @db.Timestamp(6)
+  engagement   Json?
+  createdAt    DateTime       @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt    DateTime       @default(now()) @updatedAt @map("updated_at") @db.Timestamp(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status])
+  @@index([scheduledAt])
+  @@index([platform, status])
+  @@index([status, scheduledAt])
+  @@map("scheduled_posts")
+}
+
+// ============================================
+// WEBHOOK EVENTS (Idempotent Processing)
+// ============================================
+
+model WebhookEvent {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  eventId         String    @unique @map("event_id") @db.VarChar(255)
+  eventType       String    @map("event_type") @db.VarChar(100)
+  source          String    @db.VarChar(50)
+  payload         Json
+  processed       Boolean   @default(false)
+  processedAt     DateTime? @map("processed_at") @db.Timestamp(6)
+  processingError String?   @map("processing_error") @db.Text
+  retryCount      Int       @default(0) @map("retry_count")
+  userId          String?   @map("user_id") @db.Uuid
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamp(6)
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([processed])
+  @@index([eventType])
+  @@index([source])
+  @@index([createdAt])
+  @@map("webhook_events")
+}
+
+// ============================================
+// API KEYS
+// ============================================
+
+model ApiKey {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId      String    @map("user_id") @db.Uuid
+  keyHash     String    @unique @map("key_hash") @db.VarChar(255)
+  keyPrefix   String    @map("key_prefix") @db.VarChar(8)
+  name        String    @db.VarChar(100)
+  permissions Json
+  rateLimit   Int?      @default(100) @map("rate_limit")
+  lastUsedAt  DateTime? @map("last_used_at") @db.Timestamp(6)
+  expiresAt   DateTime? @map("expires_at") @db.Timestamp(6)
+  isActive    Boolean   @default(true) @map("is_active")
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamp(6)
+  revokedAt   DateTime? @map("revoked_at") @db.Timestamp(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([keyPrefix])
+  @@index([isActive])
+  @@map("api_keys")
+}
+
+// ============================================
+// USER SESSIONS
+// ============================================
+
+model Session {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId         String   @map("user_id") @db.Uuid
+  refreshToken   String   @unique @map("refresh_token") @db.VarChar(255)
+  accessToken    String?  @unique @map("access_token") @db.VarChar(255)
+  userAgent      String?  @map("user_agent") @db.Text
+  ipAddress      String?  @map("ip_address") @db.VarChar(45)
+  location       String?  @db.VarChar(100)
+  deviceType     String?  @map("device_type") @db.VarChar(50)
+  isRevoked      Boolean  @default(false) @map("is_revoked")
+  expiresAt      DateTime @map("expires_at") @db.Timestamp(6)
+  lastActivityAt DateTime @default(now()) @map("last_activity_at") @db.Timestamp(6)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamp(6)
+  metadata       Json?    @db.JsonB
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([refreshToken])
+  @@index([expiresAt])
+  @@map("sessions")
+}
+
+// ============================================
+// NOTIFICATION PREFERENCES
+// ============================================
+
+model NotificationPreference {
+  id                 String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId             String   @unique @map("user_id") @db.Uuid
+  emailNotifications Boolean  @default(true) @map("email_notifications")
+  slackWebhookUrl    String?  @map("slack_webhook_url") @db.Text
+  webhookUrl         String?  @map("webhook_url") @db.Text
+  notifyOnSuccess    Boolean  @default(false) @map("notify_on_success")
+  notifyOnFailure    Boolean  @default(true) @map("notify_on_failure")
+  notifyOnLimit      Boolean  @default(true) @map("notify_on_limit")
+  dailyDigest        Boolean  @default(true) @map("daily_digest")
+  weeklyReport       Boolean  @default(true) @map("weekly_report")
+  quietHoursStart    String?  @map("quiet_hours_start") @db.VarChar(5)
+  quietHoursEnd      String?  @map("quiet_hours_end") @db.VarChar(5)
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt          DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamp(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("notification_preferences")
+}
+
+// ============================================
+// AUDIT LOGS
+// ============================================
+
+model AuditLog {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId     String?  @map("user_id") @db.Uuid
+  action     String   @db.VarChar(100)
+  entityType String   @map("entity_type") @db.VarChar(50)
+  entityId   String?  @map("entity_id") @db.Uuid
+  oldValues  Json?
+  newValues  Json?
+  changes    Json?
+  ipAddress  String?  @map("ip_address") @db.VarChar(45)
+  userAgent  String?  @map("user_agent") @db.Text
+  metadata   Json?
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamp(6)
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([entityType, entityId])
+  @@index([action])
+  @@index([createdAt(sort: Desc)])
+  @@map("audit_logs")
+}
+
+// ============================================
+// PLAN HISTORY
+// ============================================
+
+model PlanHistory {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId        String   @map("user_id") @db.Uuid
+  oldPlan       String   @map("old_plan") @db.VarChar(50)
+  newPlan       String   @map("new_plan") @db.VarChar(50)
+  changedBy     String   @map("changed_by") @db.VarChar(255)
+  reason        String?  @db.Text
+  stripeEventId String?  @map("stripe_event_id") @db.VarChar(255)
+  metadata      Json?
+  changedAt     DateTime @default(now()) @map("changed_at") @db.Timestamp(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, changedAt(sort: Desc)])
+  @@index([oldPlan, newPlan])
+  @@map("plan_history")
+}
+
+// ============================================
+// RATE LIMIT TRACKING
+// ============================================
+
+model RateLimit {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  key          String    @unique @db.VarChar(255)
+  count        Int       @default(0)
+  windowStart  DateTime  @map("window_start") @db.Timestamp(6)
+  windowEnd    DateTime  @map("window_end") @db.Timestamp(6)
+  blocked      Boolean   @default(false)
+  blockedUntil DateTime? @map("blocked_until") @db.Timestamp(6)
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt    DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamp(6)
+
+  @@index([key, windowEnd])
+  @@index([blocked, blockedUntil])
+  @@map("rate_limits")
+}
+
+// ============================================
+// CONTENT GENERATION QUEUE
+// ============================================
+
+model ContentGeneration {
+  id             String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId         String           @map("user_id") @db.Uuid
+  type           ContentType
+  prompt         String           @db.Text
+  negativePrompt String?          @map("negative_prompt") @db.Text
+  model          String           @db.VarChar(50)
+  parameters     Json
+  result         Json?
+  resultUrls     Json?            @map("result_urls")
+  status         GenerationStatus @default(PENDING)
+  errorMessage   String?          @map("error_message") @db.Text
+  tokensUsed     Int?             @map("tokens_used")
+  costUsd        Decimal          @default(0) @map("cost_usd") @db.Decimal(10, 6)
+  metadata       Json?
+  createdAt      DateTime         @default(now()) @map("created_at") @db.Timestamp(6)
+  completedAt    DateTime?        @map("completed_at") @db.Timestamp(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status])
+  @@index([type])
+  @@index([createdAt(sort: Desc)])
+  @@map("content_generations")
+}
+
+// ============================================
+// BILLING INVOICES CACHE
+// ============================================
+
+model BillingInvoice {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId           String    @map("user_id") @db.Uuid
+  stripeInvoiceId  String    @unique @map("stripe_invoice_id") @db.VarChar(255)
+  invoiceNumber    String?   @map("invoice_number") @db.VarChar(100)
+  amount           Decimal   @db.Decimal(10, 2)
+  currency         String    @db.VarChar(3)
+  status           String    @db.VarChar(50)
+  pdfUrl           String?   @map("pdf_url") @db.Text
+  hostedInvoiceUrl String?   @map("hosted_invoice_url") @db.Text
+  periodStart      DateTime  @map("period_start") @db.Timestamp(6)
+  periodEnd        DateTime  @map("period_end") @db.Timestamp(6)
+  paidAt           DateTime? @map("paid_at") @db.Timestamp(6)
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamp(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([status])
+  @@index([periodStart, periodEnd])
+  @@map("billing_invoices")
+}
+
+// ============================================
+// EMAIL QUEUE
+// ============================================
+
+model EmailQueue {
+  id           String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId       String?     @map("user_id") @db.Uuid
+  to           String      @db.VarChar(255)
+  toName       String?     @map("to_name") @db.VarChar(255)
+  subject      String      @db.Text
+  template     String      @db.VarChar(100)
+  templateData Json        @map("template_data")
+  status       EmailStatus @default(PENDING)
+  errorMessage String?     @map("error_message") @db.Text
+  sentAt       DateTime?   @map("sent_at") @db.Timestamp(6)
+  retryCount   Int         @default(0) @map("retry_count")
+  createdAt    DateTime    @default(now()) @map("created_at") @db.Timestamp(6)
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([status])
+  @@index([createdAt])
+  @@map("email_queue")
+}
+
+// ============================================
+// PASSWORD RESET TOKENS
+// ============================================
+
+model PasswordResetToken {
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  token     String    @unique @db.VarChar(255)
+  expiresAt DateTime  @map("expires_at") @db.Timestamp(6)
+  usedAt    DateTime? @map("used_at") @db.Timestamp(6)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamp(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([token])
+  @@index([expiresAt])
+  @@map("password_reset_tokens")
+}
+
+// ============================================
+// EMAIL VERIFICATION TOKENS
+// ============================================
+
+model EmailVerificationToken {
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  email     String    @db.VarChar(255)
+  token     String    @unique @db.VarChar(255)
+  expiresAt DateTime  @map("expires_at") @db.Timestamp(6)
+  usedAt    DateTime? @map("used_at") @db.Timestamp(6)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamp(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([token])
+  @@index([expiresAt])
+  @@map("email_verification_tokens")
+}
+
+// ============================================
+// ANNOUNCEMENTS
+// ============================================
+
+model Announcement {
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  title     String    @db.VarChar(255)
+  content   String
+  type      String    @default("info") @db.VarChar(50)
+  isActive  Boolean   @default(true) @map("is_active")
+  startDate DateTime  @map("start_date") @db.Timestamp(6)
+  endDate   DateTime? @map("end_date") @db.Timestamp(6)
+  createdBy String    @map("created_by") @db.Uuid
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamp(6)
+
+  @@index([isActive])
+  @@index([startDate, endDate])
+  @@map("announcements")
+}

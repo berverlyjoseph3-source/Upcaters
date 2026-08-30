@@ -1,0 +1,136 @@
+# enterprise-ai-agent-platform/k8s/worker-deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ai-agent-platform-worker
+  namespace: ai-agent-platform
+  labels:
+    app: ai-agent-platform
+    component: worker
+    version: latest
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: ai-agent-platform
+      component: worker
+  template:
+    metadata:
+      labels:
+        app: ai-agent-platform
+        component: worker
+        version: latest
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "3000"
+        prometheus.io/path: "/health/metrics"
+    spec:
+      serviceAccountName: ai-agent-platform-sa
+      containers:
+        - name: worker
+          image: ghcr.io/ai-agent-platform/worker:latest
+          imagePullPolicy: Always
+          env:
+            - name: NODE_ENV
+              value: "production"
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: ai-agent-platform-secrets
+                  key: database-url
+            - name: REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: ai-agent-platform-secrets
+                  key: redis-url
+            - name: MONGODB_URL
+              valueFrom:
+                secretKeyRef:
+                  name: ai-agent-platform-secrets
+                  key: mongodb-url
+            - name: OPENAI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: ai-agent-platform-secrets
+                  key: openai-api-key
+            - name: ANTHROPIC_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: ai-agent-platform-secrets
+                  key: anthropic-api-key
+            - name: GOOGLE_AI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: ai-agent-platform-secrets
+                  key: google-ai-api-key
+            - name: STRIPE_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: ai-agent-platform-secrets
+                  key: stripe-secret-key
+            - name: SENDGRID_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: ai-agent-platform-secrets
+                  key: sendgrid-api-key
+          envFrom:
+            - configMapRef:
+                name: ai-agent-platform-config
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: 3000
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: 3000
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "250m"
+            limits:
+              memory: "1Gi"
+              cpu: "1000m"
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 1001
+            capabilities:
+              drop:
+                - ALL
+      terminationGracePeriodSeconds: 120
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchExpressions:
+                    - key: app
+                      operator: In
+                      values:
+                        - ai-agent-platform
+                topologyKey: kubernetes.io/hostname
+      tolerations:
+        - key: "dedicated"
+          operator: "Equal"
+          value: "worker"
+          effect: "NoSchedule"
+        - key: "spot"
+          operator: "Equal"
+          value: "true"
+          effect: "NoSchedule"

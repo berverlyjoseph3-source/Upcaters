@@ -1,0 +1,48 @@
+# enterprise-ai-agent-platform/k8s/pvc.yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ai-agent-platform-backup-pvc
+  namespace: ai-agent-platform
+  labels:
+    app: ai-agent-platform
+    component: backup
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: gp3
+  resources:
+    requests:
+      storage: 100Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ai-agent-platform-logs-pvc
+  namespace: ai-agent-platform
+  labels:
+    app: ai-agent-platform
+    component: logging
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: gp3
+  resources:
+    requests:
+      storage: 50Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ai-agent-platform-media-pvc
+  namespace: ai-agent-platform
+  labels:
+    app: ai-agent-platform
+    component: media
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: efs-sc
+  resources:
+    requests:
+      storage: 500Gi

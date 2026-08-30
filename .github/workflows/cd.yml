@@ -1,0 +1,206 @@
+# enterprise-ai-agent-platform/.github/workflows/cd.yml
+name: CD Pipeline
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy to'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+          - staging
+          - production
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME_API: ${{ github.repository }}/api
+  IMAGE_NAME_FRONTEND: ${{ github.repository }}/frontend
+
+jobs:
+  deploy-staging:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name != 'workflow_dispatch'
+    environment: staging
+    concurrency: staging
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - name: Update kubeconfig
+        run: aws eks update-kubeconfig --name ai-agent-platform-staging --region us-east-1
+
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: v3.14.0
+
+      - name: Helm upgrade
+        run: |
+          helm upgrade --install ai-agent-platform ./helm/ai-agent-platform \
+            --namespace ai-agent-platform \
+            --create-namespace \
+            --values ./helm/ai-agent-platform/values-staging.yaml \
+            --set secrets.databaseUrl=${{ secrets.STAGING_DATABASE_URL }} \
+            --set secrets.redisUrl=${{ secrets.STAGING_REDIS_URL }} \
+            --set secrets.mongodbUrl=${{ secrets.STAGING_MONGODB_URL }} \
+            --set secrets.jwtSecret=${{ secrets.JWT_SECRET }} \
+            --set secrets.jwtRefreshSecret=${{ secrets.JWT_REFRESH_SECRET }} \
+            --set secrets.encryptionKey=${{ secrets.ENCRYPTION_KEY }} \
+            --set secrets.openaiApiKey=${{ secrets.OPENAI_API_KEY }} \
+            --set secrets.anthropicApiKey=${{ secrets.ANTHROPIC_API_KEY }} \
+            --set secrets.googleAiApiKey=${{ secrets.GOOGLE_AI_API_KEY }} \
+            --set secrets.googleClientId=${{ secrets.GOOGLE_CLIENT_ID }} \
+            --set secrets.googleClientSecret=${{ secrets.GOOGLE_CLIENT_SECRET }} \
+            --set secrets.linkedinClientId=${{ secrets.LINKEDIN_CLIENT_ID }} \
+            --set secrets.linkedinClientSecret=${{ secrets.LINKEDIN_CLIENT_SECRET }} \
+            --set secrets.facebookAppId=${{ secrets.FACEBOOK_APP_ID }} \
+            --set secrets.facebookAppSecret=${{ secrets.FACEBOOK_APP_SECRET }} \
+            --set secrets.twitterApiKey=${{ secrets.TWITTER_API_KEY }} \
+            --set secrets.twitterApiSecret=${{ secrets.TWITTER_API_SECRET }} \
+            --set secrets.braveSearchApiKey=${{ secrets.BRAVE_SEARCH_API_KEY }} \
+            --set secrets.openweathermapApiKey=${{ secrets.OPENWEATHERMAP_API_KEY }} \
+            --set secrets.perplexityApiKey=${{ secrets.PERPLEXITY_API_KEY }} \
+            --set secrets.stripeSecretKey=${{ secrets.STRIPE_SECRET_KEY }} \
+            --set secrets.stripeWebhookSecret=${{ secrets.STRIPE_WEBHOOK_SECRET }} \
+            --set secrets.stripePublishableKey=${{ secrets.STRIPE_PUBLISHABLE_KEY }} \
+            --set secrets.sendgridApiKey=${{ secrets.SENDGRID_API_KEY }} \
+            --set secrets.fromEmail=${{ secrets.FROM_EMAIL }}
+
+      - name: Verify deployment
+        run: |
+          kubectl rollout status deployment/ai-agent-platform-api -n ai-agent-platform --timeout=5m
+          kubectl rollout status deployment/ai-agent-platform-worker -n ai-agent-platform --timeout=5m
+          kubectl rollout status deployment/ai-agent-platform-frontend -n ai-agent-platform --timeout=5m
+
+      - name: Notify Slack
+        uses: slackapi/slack-github-action@v1.25.0
+        with:
+          payload: |
+            {
+              "text": "✅ Staging deployment completed successfully!\nCommit: ${{ github.sha }}\nRepository: ${{ github.repository }}"
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+  deploy-production:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    needs: deploy-staging
+    if: github.ref == 'refs/heads/main' && github.event_name != 'workflow_dispatch'
+    environment: production
+    concurrency: production
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - name: Update kubeconfig
+        run: aws eks update-kubeconfig --name ai-agent-platform-production --region us-east-1
+
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: v3.14.0
+
+      - name: Helm upgrade
+        run: |
+          helm upgrade --install ai-agent-platform ./helm/ai-agent-platform \
+            --namespace ai-agent-platform \
+            --create-namespace \
+            --values ./helm/ai-agent-platform/values-prod.yaml \
+            --set secrets.databaseUrl=${{ secrets.PROD_DATABASE_URL }} \
+            --set secrets.redisUrl=${{ secrets.PROD_REDIS_URL }} \
+            --set secrets.mongodbUrl=${{ secrets.PROD_MONGODB_URL }} \
+            --set secrets.jwtSecret=${{ secrets.JWT_SECRET }} \
+            --set secrets.jwtRefreshSecret=${{ secrets.JWT_REFRESH_SECRET }} \
+            --set secrets.encryptionKey=${{ secrets.ENCRYPTION_KEY }} \
+            --set secrets.openaiApiKey=${{ secrets.OPENAI_API_KEY }} \
+            --set secrets.anthropicApiKey=${{ secrets.ANTHROPIC_API_KEY }} \
+            --set secrets.googleAiApiKey=${{ secrets.GOOGLE_AI_API_KEY }} \
+            --set secrets.googleClientId=${{ secrets.GOOGLE_CLIENT_ID }} \
+            --set secrets.googleClientSecret=${{ secrets.GOOGLE_CLIENT_SECRET }} \
+            --set secrets.linkedinClientId=${{ secrets.LINKEDIN_CLIENT_ID }} \
+            --set secrets.linkedinClientSecret=${{ secrets.LINKEDIN_CLIENT_SECRET }} \
+            --set secrets.facebookAppId=${{ secrets.FACEBOOK_APP_ID }} \
+            --set secrets.facebookAppSecret=${{ secrets.FACEBOOK_APP_SECRET }} \
+            --set secrets.twitterApiKey=${{ secrets.TWITTER_API_KEY }} \
+            --set secrets.twitterApiSecret=${{ secrets.TWITTER_API_SECRET }} \
+            --set secrets.braveSearchApiKey=${{ secrets.BRAVE_SEARCH_API_KEY }} \
+            --set secrets.openweathermapApiKey=${{ secrets.OPENWEATHERMAP_API_KEY }} \
+            --set secrets.perplexityApiKey=${{ secrets.PERPLEXITY_API_KEY }} \
+            --set secrets.stripeSecretKey=${{ secrets.STRIPE_SECRET_KEY }} \
+            --set secrets.stripeWebhookSecret=${{ secrets.STRIPE_WEBHOOK_SECRET }} \
+            --set secrets.stripePublishableKey=${{ secrets.STRIPE_PUBLISHABLE_KEY }} \
+            --set secrets.sendgridApiKey=${{ secrets.SENDGRID_API_KEY }} \
+            --set secrets.fromEmail=${{ secrets.FROM_EMAIL }}
+
+      - name: Verify deployment
+        run: |
+          kubectl rollout status deployment/ai-agent-platform-api -n ai-agent-platform --timeout=10m
+          kubectl rollout status deployment/ai-agent-platform-worker -n ai-agent-platform --timeout=10m
+          kubectl rollout status deployment/ai-agent-platform-frontend -n ai-agent-platform --timeout=10m
+
+      - name: Smoke tests
+        run: |
+          curl -f https://api.aiagentplatform.com/health || exit 1
+          curl -f https://app.aiagentplatform.com/health || exit 1
+
+      - name: Notify Slack
+        uses: slackapi/slack-github-action@v1.25.0
+        with:
+          payload: |
+            {
+              "text": "🚀 Production deployment completed successfully!\nCommit: ${{ github.sha }}\nRepository: ${{ github.repository }}\nURL: https://app.aiagentplatform.com"
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+  rollback:
+    name: Rollback
+    runs-on: ubuntu-latest
+    if: failure()
+    needs: [deploy-staging, deploy-production]
+    environment: production
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - name: Update kubeconfig
+        run: aws eks update-kubeconfig --name ai-agent-platform-production --region us-east-1
+
+      - name: Rollback Helm release
+        run: |
+          helm rollback ai-agent-platform --namespace ai-agent-platform
+
+      - name: Notify Slack
+        uses: slackapi/slack-github-action@v1.25.0
+        with:
+          payload: |
+            {
+              "text": "⚠️ Deployment failed! Rolling back to previous version.\nCommit: ${{ github.sha }}\nRepository: ${{ github.repository }}"
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}

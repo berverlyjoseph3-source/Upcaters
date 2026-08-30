@@ -1,0 +1,189 @@
+# enterprise-ai-agent-platform/helm/ai-agent-platform/templates/deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "ai-agent-platform.fullname" . }}-api
+  labels:
+    {{- include "ai-agent-platform.labels" . | nindent 4 }}
+    component: api
+spec:
+  {{- if not .Values.autoscaling.enabled }}
+  replicas: {{ .Values.app.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "ai-agent-platform.selectorLabels" . | nindent 6 }}
+      component: api
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        checksum/secret: {{ include (print $.Template.BasePath "/secrets.yaml") . | sha256sum }}
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "3000"
+        prometheus.io/path: "/health/metrics"
+      labels:
+        {{- include "ai-agent-platform.selectorLabels" . | nindent 8 }}
+        component: api
+    spec:
+      serviceAccountName: {{ include "ai-agent-platform.serviceAccountName" . }}
+      containers:
+        - name: api
+          image: "{{ .Values.app.image.repository }}:{{ .Values.app.image.tag }}"
+          imagePullPolicy: {{ .Values.app.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.app.service.targetPort }}
+              protocol: TCP
+          env:
+            - name: NODE_ENV
+              value: {{ .Values.global.environment }}
+            - name: PORT
+              value: {{ .Values.app.service.port | quote }}
+            {{- range .Values.app.env }}
+            - name: {{ .name }}
+              value: {{ .value | quote }}
+            {{- end }}
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "ai-agent-platform.fullname" . }}-secrets
+                  key: database-url
+            - name: REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "ai-agent-platform.fullname" . }}-secrets
+                  key: redis-url
+            - name: MONGODB_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "ai-agent-platform.fullname" . }}-secrets
+                  key: mongodb-url
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "ai-agent-platform.fullname" . }}-secrets
+                  key: jwt-secret
+            - name: JWT_REFRESH_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "ai-agent-platform.fullname" . }}-secrets
+                  key: jwt-refresh-secret
+            - name: ENCRYPTION_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "ai-agent-platform.fullname" . }}-secrets
+                  key: encryption-key
+            - name: OPENAI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "ai-agent-platform.fullname" . }}-secrets
+                  key: openai-api-key
+            - name: ANTHROPIC_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "ai-agent-platform.fullname" . }}-secrets
+                  key: anthropic-api-key
+            - name: GOOGLE_AI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "ai-agent-platform.fullname" . }}-secrets
+                  key: google-ai-api-key
+            - name: GOOGLE_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "ai-agent-platform.fullname" . }}-secrets
+                  key: google-client-id
+            - name: GOOGLE_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "ai-agent-platform.fullname" . }}-secrets
+                  key: google-client-secret
+            - name: LINKEDIN_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "ai-agent-platform.fullname" . }}-secrets
+                  key: linkedin-client-id
+            - name: LINKEDIN_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "ai-agent-platform.fullname" . }}-secrets
+                  key: linkedin-client-secret
+            - name: FACEBOOK_APP_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "ai-agent-platform.fullname" . }}-secrets
+                  key: facebook-app-id
+            - name: FACEBOOK_APP_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "ai-agent-platform.fullname" . }}-secrets
+                  key: facebook-app-secret
+            - name: TWITTER_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "ai-agent-platform.fullname" . }}-secrets
+                  key: twitter-api-key
+            - name: TWITTER_API_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "ai-agent-platform.fullname" . }}-secrets
+                  key: twitter-api-secret
+            - name: BRAVE_SEARCH_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "ai-agent-platform.fullname" . }}-secrets
+                  key: brave-search-api-key
+            - name: OPENWEATHERMAP_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "ai-agent-platform.fullname" . }}-secrets
+                  key: openweathermap-api-key
+            - name: PERPLEXITY_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "ai-agent-platform.fullname" . }}-secrets
+                  key: perplexity-api-key
+            - name: STRIPE_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "ai-agent-platform.fullname" . }}-secrets
+                  key: stripe-secret-key
+            - name: STRIPE_WEBHOOK_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "ai-agent-platform.fullname" . }}-secrets
+                  key: stripe-webhook-secret
+            - name: SENDGRID_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "ai-agent-platform.fullname" . }}-secrets
+                  key: sendgrid-api-key
+            - name: FROM_EMAIL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "ai-agent-platform.fullname" . }}-secrets
+                  key: from-email
+            - name: APP_URL
+              value: {{ .Values.ingress.hosts | first | first | quote }}
+          envFrom:
+            - configMapRef:
+                name: {{ include "ai-agent-platform.fullname" . }}-config
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          resources:
+            {{- toYaml .Values.app.resources | nindent 12 }}
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

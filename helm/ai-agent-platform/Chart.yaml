@@ -1,0 +1,19 @@
+# enterprise-ai-agent-platform/helm/ai-agent-platform/Chart.yaml
+apiVersion: v2
+name: ai-agent-platform
+description: Enterprise AI Agent Platform - Helm chart for Kubernetes deployment
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+keywords:
+  - ai
+  - agent
+  - platform
+  - machine-learning
+  - automation
+home: https://aiagentplatform.com
+sources:
+  - https://github.com/your-org/ai-agent-platform
+maintainers:
+  - name: AI Agent Team
+    email: team@aiagentplatform.com

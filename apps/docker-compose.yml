@@ -1,0 +1,140 @@
+# docker-compose.yml
+version: '3.8'
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: ai-agent-postgres
+    environment:
+      POSTGRES_DB: aiagent
+      POSTGRES_USER: aiagent_user
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-changeme123}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aiagent_user -d aiagent"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - ai-agent-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: ai-agent-redis
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-changeme123}
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - ai-agent-network
+
+  mongodb:
+    image: mongo:7
+    container_name: ai-agent-mongodb
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER:-admin}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD:-changeme123}
+      MONGO_INITDB_DATABASE: aiagent
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - ai-agent-network
+
+  api:
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile
+    container_name: ai-agent-api
+    environment:
+      NODE_ENV: development
+      DATABASE_URL: postgresql://aiagent_user:${DB_PASSWORD:-changeme123}@postgres:5432/aiagent
+      REDIS_URL: redis://default:${REDIS_PASSWORD:-changeme123}@redis:6379
+      MONGODB_URL: mongodb://${MONGO_USER:-admin}:${MONGO_PASSWORD:-changeme123}@mongodb:27017/aiagent
+      PORT: 3000
+      JWT_SECRET: ${JWT_SECRET:-change_this_in_production}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-change_this_in_production}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
+    ports:
+      - "3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      mongodb:
+        condition: service_healthy
+    volumes:
+      - ./apps/api:/app
+      - /app/node_modules
+    networks:
+      - ai-agent-network
+
+  worker:
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile.worker
+    container_name: ai-agent-worker
+    environment:
+      NODE_ENV: development
+      DATABASE_URL: postgresql://aiagent_user:${DB_PASSWORD:-changeme123}@postgres:5432/aiagent
+      REDIS_URL: redis://default:${REDIS_PASSWORD:-changeme123}@redis:6379
+      MONGODB_URL: mongodb://${MONGO_USER:-admin}:${MONGO_PASSWORD:-changeme123}@mongodb:27017/aiagent
+      JWT_SECRET: ${JWT_SECRET:-change_this_in_production}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      GOOGLE_AI_API_KEY: ${GOOGLE_AI_API_KEY}
+      LINKEDIN_CLIENT_ID: ${LINKEDIN_CLIENT_ID}
+      LINKEDIN_CLIENT_SECRET: ${LINKEDIN_CLIENT_SECRET}
+    depends_on:
+      - redis
+      - postgres
+      - mongodb
+    volumes:
+      - ./apps/api:/app
+      - /app/node_modules
+    networks:
+      - ai-agent-network
+
+  frontend:
+    build:
+      context: ./apps/frontend
+      dockerfile: Dockerfile
+    container_name: ai-agent-frontend
+    environment:
+      VITE_API_URL: http://localhost:3000
+      VITE_STRIPE_PUBLIC_KEY: ${STRIPE_PUBLIC_KEY}
+    ports:
+      - "80:80"
+    depends_on:
+      - api
+    networks:
+      - ai-agent-network
+
+volumes:
+  postgres_data:
+  redis_data:
+  mongodb_data:
+
+networks:
+  ai-agent-network:
+    driver: bridge

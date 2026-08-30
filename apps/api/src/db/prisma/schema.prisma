@@ -1,0 +1,405 @@
+// prisma/schema.prisma
+generator client {
+  provider = "prisma-client-js"
+}
+
+generator dbml {
+  provider = "prisma-dbml-generator"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Core User Model
+model User {
+  id                   String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email                String              @unique @db.VarChar(255)
+  name                 String?             @db.VarChar(255)
+  avatarUrl            String?             @map("avatar_url") @db.Text
+  planId               String              @default("FREE") @map("plan_id") @db.VarChar(50)
+  planStartedAt        DateTime            @default(now()) @map("plan_started_at") @db.Timestamp(6)
+  planExpiresAt        DateTime?           @map("plan_expires_at") @db.Timestamp(6)
+  stripeCustomerId     String?             @unique @map("stripe_customer_id") @db.VarChar(255)
+  stripeSubscriptionId String?             @unique @map("stripe_subscription_id") @db.VarChar(255)
+  apiKey               String?             @unique @map("api_key") @db.VarChar(64)
+  isActive             Boolean             @default(true) @map("is_active")
+  role                 UserRole            @default(USER)
+  createdAt            DateTime            @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt            DateTime            @default(now()) @updatedAt @map("updated_at") @db.Timestamp(6)
+  
+  // Relations
+  oauthConnections   OAuthConnection[]
+  agentExecutions    AgentExecution[]
+  usageLogs          UsageLog[]
+  agentMemory        AgentMemory[]
+  scheduledPosts     ScheduledPost[]
+  webhookEvents      WebhookEvent[]
+  notificationPreferences NotificationPreference?
+  auditLogs          AuditLog[]
+  sessions           Session[]
+  apiKeys            ApiKey[]
+  planHistory        PlanHistory[]
+
+  @@map("users")
+}
+
+enum UserRole {
+  USER
+  ADMIN
+  SUPPORT
+}
+
+// OAuth Connections for External Services
+model OAuthConnection {
+  id              String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId          String         @map("user_id") @db.Uuid
+  provider        OAuthProvider
+  accessToken     String         @map("access_token") @db.Text
+  refreshToken    String?        @map("refresh_token") @db.Text
+  expiresAt       DateTime?      @map("expires_at") @db.Timestamp(6)
+  scope           String?        @db.Text
+  providerUserId  String?        @map("provider_user_id") @db.VarChar(255)
+  providerEmail   String?        @map("provider_email") @db.VarChar(255)
+  lastSyncedAt    DateTime?      @map("last_synced_at") @db.Timestamp(6)
+  createdAt       DateTime       @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt       DateTime       @default(now()) @updatedAt @map("updated_at") @db.Timestamp(6)
+  
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@unique([userId, provider])
+  @@map("oauth_connections")
+}
+
+enum OAuthProvider {
+  GOOGLE_GMAIL
+  GOOGLE_DRIVE
+  GOOGLE_CALENDAR
+  GOOGLE_TASKS
+  LINKEDIN
+  FACEBOOK
+  INSTAGRAM
+  X_TWITTER
+  MICROSOFT_GRAPH
+  ASANA
+  MONDAY
+  SLACK
+}
+
+// Agent Execution Logs
+model AgentExecution {
+  id           String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId       String            @map("user_id") @db.Uuid
+  sessionId    String?           @map("session_id") @db.Uuid
+  agentType    AgentType
+  actionType   String            @map("action_type") @db.VarChar(100)
+  input        Json?
+  output       Json?
+  tokensUsed   Int               @default(0) @map("tokens_used")
+  costUsd      Decimal           @default(0) @map("cost_usd") @db.Decimal(10,6)
+  status       ExecutionStatus   @default(PENDING)
+  errorMessage String?           @map("error_message") @db.Text
+  durationMs   Int?              @map("duration_ms")
+  retryCount   Int               @default(0) @map("retry_count")
+  metadata     Json?
+  createdAt    DateTime          @default(now()) @map("created_at") @db.Timestamp(6)
+  completedAt  DateTime?         @map("completed_at") @db.Timestamp(6)
+  
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([agentType, status])
+  @@index([sessionId])
+  @@map("agent_executions")
+}
+
+enum AgentType {
+  ORCHESTRATOR
+  EMAIL
+  DRIVE
+  CONTENT
+  SOCIAL
+  CALENDAR
+  WEB
+  TASK
+}
+
+enum ExecutionStatus {
+  PENDING
+  RUNNING
+  SUCCESS
+  ERROR
+  CANCELLED
+  RETRYING
+}
+
+// Usage Tracking with Monthly Rollover
+model UsageLog {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId        String   @map("user_id") @db.Uuid
+  billingPeriod String   @map("billing_period") @db.VarChar(7) // Format: YYYY-MM
+  actionType    String   @map("action_type") @db.VarChar(100)
+  count         Int      @default(0)
+  tokensUsed    BigInt   @default(0) @map("tokens_used")
+  costUsd       Decimal  @default(0) @map("cost_usd") @db.Decimal(12,6)
+  lastResetAt   DateTime @default(now()) @map("last_reset_at") @db.Timestamp(6)
+  updatedAt     DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamp(6)
+  
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@unique([userId, billingPeriod, actionType])
+  @@index([userId, billingPeriod])
+  @@map("usage_logs")
+}
+
+// Agent Memory (Short-term and Long-term with Vector Embeddings)
+model AgentMemory {
+  id          String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId      String         @map("user_id") @db.Uuid
+  sessionId   String?        @map("session_id") @db.Uuid
+  agentType   AgentType?
+  memoryType  MemoryType      @default(SHORT_TERM)
+  content     String         @db.Text
+  embedding   Unsupported("vector")? // pgvector: 1536 dimensions
+  metadata    Json?
+  importance  Float          @default(0.5) // 0-1 score for long-term retention
+  accessCount Int            @default(0) @map("access_count")
+  lastAccessedAt DateTime?   @map("last_accessed_at") @db.Timestamp(6)
+  createdAt   DateTime       @default(now()) @map("created_at") @db.Timestamp(6)
+  expiresAt   DateTime?      @map("expires_at") @db.Timestamp(6)
+  
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@index([userId, memoryType])
+  @@index([sessionId])
+  @@index([agentType])
+  @@map("agent_memory")
+}
+
+enum MemoryType {
+  SHORT_TERM
+  LONG_TERM
+  EPISODIC
+  SEMANTIC
+}
+
+// Scheduled Social Media Posts
+model ScheduledPost {
+  id           String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId       String         @map("user_id") @db.Uuid
+  platform     SocialPlatform
+  content      String         @db.Text
+  mediaUrls    Json           @default("[]") @map("media_urls")
+  metadata     Json?
+  scheduledAt  DateTime       @map("scheduled_at") @db.Timestamp(6)
+  status       PostStatus     @default(SCHEDULED)
+  publishedAt  DateTime?      @map("published_at") @db.Timestamp(6)
+  postId       String?        @map("post_id") @db.VarChar(255) // Platform's post ID
+  errorMessage String?        @map("error_message") @db.Text
+  retryCount   Int            @default(0) @map("retry_count")
+  createdAt    DateTime       @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt    DateTime       @default(now()) @updatedAt @map("updated_at") @db.Timestamp(6)
+  
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@index([userId, status])
+  @@index([scheduledAt])
+  @@index([platform, status])
+  @@map("scheduled_posts")
+}
+
+enum SocialPlatform {
+  LINKEDIN
+  INSTAGRAM
+  FACEBOOK
+  X_TWITTER
+  THREADS
+  TIKTOK
+  YOUTUBE
+}
+
+enum PostStatus {
+  SCHEDULED
+  PROCESSING
+  PUBLISHED
+  FAILED
+  CANCELLED
+}
+
+// Webhook Events for Idempotent Processing
+model WebhookEvent {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  eventId     String   @unique @map("event_id") @db.VarChar(255)
+  eventType   String   @map("event_type") @db.VarChar(100)
+  payload     Json
+  processed   Boolean  @default(false)
+  processedAt DateTime? @map("processed_at") @db.Timestamp(6)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamp(6)
+  
+  @@index([processed])
+  @@index([eventType])
+  @@map("webhook_events")
+}
+
+// API Keys for Programmatic Access
+model ApiKey {
+  id           String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId       String         @map("user_id") @db.Uuid
+  keyHash      String         @unique @map("key_hash") @db.VarChar(255)
+  name         String         @db.VarChar(100)
+  permissions  Json           // Array of allowed actions
+  lastUsedAt   DateTime?      @map("last_used_at") @db.Timestamp(6)
+  expiresAt    DateTime?      @map("expires_at") @db.Timestamp(6)
+  isActive     Boolean        @default(true) @map("is_active")
+  createdAt    DateTime       @default(now()) @map("created_at") @db.Timestamp(6)
+  
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@index([userId])
+  @@map("api_keys")
+}
+
+// User Sessions
+model Session {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId       String   @map("user_id") @db.Uuid
+  refreshToken String   @unique @map("refresh_token") @db.VarChar(255)
+  userAgent    String?  @map("user_agent") @db.Text
+  ipAddress    String?  @map("ip_address") @db.VarChar(45)
+  expiresAt    DateTime @map("expires_at") @db.Timestamp(6)
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamp(6)
+  
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@index([userId])
+  @@map("sessions")
+}
+
+// Notification Preferences
+model NotificationPreference {
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId           String   @unique @map("user_id") @db.Uuid
+  emailNotifications Boolean @default(true) @map("email_notifications")
+  slackWebhookUrl  String?  @map("slack_webhook_url") @db.Text
+  webhookUrl       String?  @map("webhook_url") @db.Text
+  notifyOnSuccess  Boolean  @default(false) @map("notify_on_success")
+  notifyOnFailure  Boolean  @default(true) @map("notify_on_failure")
+  dailyDigest      Boolean  @default(true) @map("daily_digest")
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt        DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamp(6)
+  
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@map("notification_preferences")
+}
+
+// Audit Logs for Compliance
+model AuditLog {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId      String?  @map("user_id") @db.Uuid
+  action      String   @db.VarChar(100)
+  entityType  String   @map("entity_type") @db.VarChar(50)
+  entityId    String?  @map("entity_id") @db.Uuid
+  oldValues   Json?
+  newValues   Json?
+  ipAddress   String?  @map("ip_address") @db.VarChar(45)
+  userAgent   String?  @map("user_agent") @db.Text
+  metadata    Json?
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamp(6)
+  
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+  
+  @@index([userId])
+  @@index([entityType, entityId])
+  @@index([createdAt(sort: Desc)])
+  @@map("audit_logs")
+}
+
+// Plan History for Analytics
+model PlanHistory {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId      String   @map("user_id") @db.Uuid
+  oldPlan     String   @map("old_plan") @db.VarChar(50)
+  newPlan     String   @map("new_plan") @db.VarChar(50)
+  changedBy   String   @map("changed_by") @db.VarChar(255) // user email or 'system'
+  reason      String?  @db.Text
+  changedAt   DateTime @default(now()) @map("changed_at") @db.Timestamp(6)
+  
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@index([userId, changedAt(sort: Desc)])
+  @@map("plan_history")
+}
+
+// Rate Limit Tracking
+model RateLimit {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  key          String   @unique @db.VarChar(255) // Format: {type}:{identifier}:{endpoint}
+  count        Int      @default(0)
+  windowStart  DateTime @map("window_start") @db.Timestamp(6)
+  windowEnd    DateTime @map("window_end") @db.Timestamp(6)
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt    DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamp(6)
+  
+  @@index([key, windowEnd])
+  @@map("rate_limits")
+}
+
+// Content Generation Queue
+model ContentGeneration {
+  id           String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId       String           @map("user_id") @db.Uuid
+  type         ContentType
+  prompt       String           @db.Text
+  model        String           @db.VarChar(50)
+  parameters   Json
+  result       Json?
+  status       GenerationStatus @default(PENDING)
+  errorMessage String?          @map("error_message") @db.Text
+  costUsd      Decimal          @default(0) @map("cost_usd") @db.Decimal(10,6)
+  createdAt    DateTime         @default(now()) @map("created_at") @db.Timestamp(6)
+  completedAt  DateTime?        @map("completed_at") @db.Timestamp(6)
+  
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@index([userId, status])
+  @@index([createdAt(sort: Desc)])
+  @@map("content_generations")
+}
+
+enum ContentType {
+  TEXT
+  IMAGE
+  VIDEO
+  AUDIO
+  CODE
+  TRANSLATION
+}
+
+enum GenerationStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+// Billing Invoices Cache
+model BillingInvoice {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId          String   @map("user_id") @db.Uuid
+  stripeInvoiceId String   @unique @map("stripe_invoice_id") @db.VarChar(255)
+  amount          Decimal  @db.Decimal(10,2)
+  currency        String   @db.VarChar(3)
+  status          String   @db.VarChar(50)
+  pdfUrl          String?  @map("pdf_url") @db.Text
+  periodStart     DateTime @map("period_start") @db.Timestamp(6)
+  periodEnd       DateTime @map("period_end") @db.Timestamp(6)
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamp(6)
+  
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@index([userId])
+  @@index([status])
+  @@map("billing_invoices")
+}

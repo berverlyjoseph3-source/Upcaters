@@ -1,0 +1,473 @@
+"use strict";
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.SubscriptionService = void 0;
+// enterprise-ai-agent-platform/apps/api/src/billing/services/subscription.service.ts
+const client_1 = require("../../db/client");
+const logger_1 = require("../../utils/logger");
+const stripe_service_1 = require("./stripe.service");
+const plan_gate_service_1 = require("../../services/plan-gate.service");
+const billing_types_1 = require("../../types/billing.types");
+const billing_types_2 = require("../../types/billing.types");
+class SubscriptionService {
+    /**
+     * Get subscription for a user
+     */
+    static async getUserSubscription(userId) {
+        try {
+            const user = await client_1.prisma.user.findUnique({
+                where: { id: userId },
+                select: {
+                    id: true,
+                    stripeSubscriptionId: true,
+                    planId: true,
+                    planStartedAt: true,
+                    planExpiresAt: true,
+                },
+            });
+            if (!user || !user.stripeSubscriptionId) {
+                return null;
+            }
+            // Get latest subscription from Stripe
+            const stripeSubscription = await stripe_service_1.StripeService.getSubscription(user.stripeSubscriptionId);
+            if (!stripeSubscription) {
+                return null;
+            }
+            return {
+                id: stripeSubscription.id,
+                userId: user.id,
+                stripeSubscriptionId: stripeSubscription.id,
+                planId: user.planId,
+                status: this.mapStripeStatus(stripeSubscription.status),
+                currentPeriodStart: new Date(stripeSubscription.current_period_start * 1000),
+                currentPeriodEnd: new Date(stripeSubscription.current_period_end * 1000),
+                cancelAtPeriodEnd: stripeSubscription.cancel_at_period_end,
+                trialStart: stripeSubscription.trial_start ? new Date(stripeSubscription.trial_start * 1000) : undefined,
+                trialEnd: stripeSubscription.trial_end ? new Date(stripeSubscription.trial_end * 1000) : undefined,
+                priceAmount: stripeSubscription.items.data[0]?.price.unit_amount || 0,
+                priceCurrency: stripeSubscription.items.data[0]?.price.currency || 'usd',
+                interval: stripeSubscription.items.data[0]?.price.recurring?.interval === 'year'
+                    ? billing_types_1.BillingInterval.YEARLY
+                    : billing_types_1.BillingInterval.MONTHLY,
+            };
+        }
+        catch (error) {
+            logger_1.logger.error({ error, userId }, 'Failed to get user subscription');
+            return null;
+        }
+    }
+    /**
+     * Sync subscription from Stripe webhook to database
+     */
+    static async syncSubscription(stripeSubscriptionId, customerId) {
+        try {
+            const stripeSubscription = await stripe_service_1.StripeService.getSubscription(stripeSubscriptionId);
+            if (!stripeSubscription) {
+                logger_1.logger.warn({ stripeSubscriptionId }, 'Stripe subscription not found');
+                return;
+            }
+            // Find user by Stripe customer ID
+            const user = await client_1.prisma.user.findFirst({
+                where: { stripeCustomerId: customerId },
+            });
+            if (!user) {
+                logger_1.logger.warn({ customerId, stripeSubscriptionId }, 'User not found for subscription sync');
+                return;
+            }
+            // Determine plan from price ID
+            const priceId = stripeSubscription.items.data[0]?.price.id;
+            const planId = this.getPlanIdFromPriceId(priceId);
+            // Update user's plan in database
+            await client_1.prisma.user.update({
+                where: { id: user.id },
+                data: {
+                    planId: planId,
+                    stripeSubscriptionId: stripeSubscription.id,
+                    planStartedAt: new Date(stripeSubscription.current_period_start * 1000),
+                    planExpiresAt: stripeSubscription.cancel_at_period_end
+                        ? new Date(stripeSubscription.current_period_end * 1000)
+                        : null,
+                    updatedAt: new Date(),
+                },
+            });
+            // Clear plan cache
+            plan_gate_service_1.PlanGateService.clearUserPlanCache(user.id);
+            // Create plan history entry
+            await client_1.prisma.planHistory.create({
+                data: {
+                    userId: user.id,
+                    oldPlan: user.planId,
+                    newPlan: planId,
+                    changedBy: 'stripe',
+                    reason: `Subscription ${stripeSubscription.status} from Stripe`,
+                    stripeEventId: stripeSubscription.id,
+                },
+            });
+            logger_1.logger.info({
+                userId: user.id,
+                oldPlan: user.planId,
+                newPlan: planId,
+                stripeSubscriptionId,
+            }, 'Subscription synced to database');
+        }
+        catch (error) {
+            logger_1.logger.error({ error, stripeSubscriptionId, customerId }, 'Failed to sync subscription');
+            throw error;
+        }
+    }
+    /**
+     * Update subscription (change plan, cancel, reactivate)
+     */
+    static async updateSubscription(userId, request) {
+        try {
+            const user = await client_1.prisma.user.findUnique({
+                where: { id: userId },
+                select: { stripeSubscriptionId: true },
+            });
+            if (!user?.stripeSubscriptionId) {
+                throw new Error('No active subscription found');
+            }
+            let updatedStripeSubscription;
+            // Handle plan change
+            if (request.planId) {
+                const plan = billing_types_2.PLANS_CONFIG[request.planId];
+                const priceId = request.interval === billing_types_1.BillingInterval.MONTHLY
+                    ? plan.stripePriceIdMonthly
+                    : plan.stripePriceIdYearly;
+                if (!priceId) {
+                    throw new Error(`No price ID found for plan ${request.planId}`);
+                }
+                updatedStripeSubscription = await stripe_service_1.StripeService.updateSubscriptionPlan(user.stripeSubscriptionId, priceId, request.prorationBehavior);
+            }
+            // Handle cancellation
+            else if (request.cancelAtPeriodEnd !== undefined) {
+                if (request.cancelAtPeriodEnd) {
+                    updatedStripeSubscription = await stripe_service_1.StripeService.cancelSubscription(user.stripeSubscriptionId, true);
+                }
+                else {
+                    updatedStripeSubscription = await stripe_service_1.StripeService.reactivateSubscription(user.stripeSubscriptionId);
+                }
+            }
+            else {
+                // Just refresh the subscription
+                updatedStripeSubscription = await stripe_service_1.StripeService.getSubscription(user.stripeSubscriptionId);
+            }
+            if (!updatedStripeSubscription) {
+                throw new Error('Failed to update subscription');
+            }
+            // Sync to database
+            await this.syncSubscription(updatedStripeSubscription.id, updatedStripeSubscription.customer);
+            // Get updated subscription
+            const subscription = await this.getUserSubscription(userId);
+            if (!subscription) {
+                throw new Error('Failed to retrieve updated subscription');
+            }
+            logger_1.logger.info({ userId, request }, 'Subscription updated successfully');
+            return subscription;
+        }
+        catch (error) {
+            logger_1.logger.error({ error, userId, request }, 'Failed to update subscription');
+            throw error;
+        }
+    }
+    /**
+     * Get billing summary for dashboard
+     */
+    static async getBillingSummary(userId) {
+        try {
+            const user = await client_1.prisma.user.findUnique({
+                where: { id: userId },
+                select: {
+                    planId: true,
+                    stripeSubscriptionId: true,
+                },
+            });
+            if (!user) {
+                throw new Error('User not found');
+            }
+            const planConfig = billing_types_2.PLANS_CONFIG[user.planId];
+            const subscription = await this.getUserSubscription(userId);
+            const usage = await this.getUsageForBilling(userId);
+            const invoices = await this.getRecentInvoices(userId);
+            const percentageUsed = (usage.aiActionsUsed / usage.aiActionsLimit) * 100;
+            return {
+                currentPlan: {
+                    id: user.planId,
+                    name: planConfig.name,
+                    features: planConfig.features,
+                    limits: {
+                        aiActions: planConfig.limits.aiActions,
+                        apiCalls: planConfig.limits.apiCalls,
+                    },
+                    overagePricing: planConfig.overagePricing,
+                },
+                subscription: subscription ? {
+                    status: subscription.status,
+                    currentPeriodEnd: subscription.currentPeriodEnd,
+                    cancelAtPeriodEnd: subscription.cancelAtPeriodEnd,
+                    priceAmount: subscription.priceAmount,
+                    interval: subscription.interval,
+                } : {
+                    status: billing_types_1.SubscriptionStatus.ACTIVE,
+                    currentPeriodEnd: new Date(),
+                    cancelAtPeriodEnd: false,
+                    priceAmount: 0,
+                    interval: billing_types_1.BillingInterval.MONTHLY,
+                },
+                usage,
+                invoices,
+            };
+        }
+        catch (error) {
+            logger_1.logger.error({ error, userId }, 'Failed to get billing summary');
+            throw error;
+        }
+    }
+    /**
+     * Get usage data for billing display
+     */
+    static async getUsageForBilling(userId) {
+        try {
+            const { UsageMeteringService } = await Promise.resolve().then(() => __importStar(require('../../services/usage-metering.service')));
+            const { PlanGateService } = await Promise.resolve().then(() => __importStar(require('../../services/plan-gate.service')));
+            const usage = await UsageMeteringService.getCurrentUsage(userId);
+            const planLimits = await PlanGateService.getUserPlan(userId);
+            const aiLimit = planLimits.limits.aiActions;
+            const apiLimit = planLimits.limits.apiCalls;
+            const aiPercentage = (usage.aiActions / aiLimit) * 100;
+            return {
+                aiActionsUsed: usage.aiActions,
+                aiActionsLimit: aiLimit,
+                apiCallsUsed: usage.apiCalls,
+                apiCallsLimit: apiLimit,
+                percentageUsed: Math.min(aiPercentage, 100),
+            };
+        }
+        catch (error) {
+            logger_1.logger.error({ error, userId }, 'Failed to get usage for billing');
+            return {
+                aiActionsUsed: 0,
+                aiActionsLimit: 0,
+                apiCallsUsed: 0,
+                apiCallsLimit: 0,
+                percentageUsed: 0,
+            };
+        }
+    }
+    /**
+     * Get recent invoices for a user
+     */
+    static async getRecentInvoices(userId, limit = 10) {
+        try {
+            const user = await client_1.prisma.user.findUnique({
+                where: { id: userId },
+                select: { stripeCustomerId: true },
+            });
+            if (!user?.stripeCustomerId) {
+                return [];
+            }
+            const invoices = await stripe_service_1.StripeService.listInvoices(user.stripeCustomerId, limit);
+            return invoices.map(invoice => ({
+                id: invoice.id,
+                number: invoice.number || invoice.id.slice(-8),
+                amount: invoice.amount_due / 100,
+                currency: invoice.currency,
+                status: invoice.status,
+                pdfUrl: invoice.invoice_pdf ?? null,
+                created: new Date(invoice.created * 1000),
+                paidAt: invoice.status_transitions?.paid_at
+                    ? new Date(invoice.status_transitions.paid_at * 1000)
+                    : undefined,
+                dueDate: invoice.due_date
+                    ? new Date(invoice.due_date * 1000)
+                    : undefined,
+            }));
+        }
+        catch (error) {
+            logger_1.logger.error({ error, userId }, 'Failed to get recent invoices');
+            return [];
+        }
+    }
+    /**
+     * Cancel subscription (immediate or at period end)
+     */
+    static async cancelSubscription(userId, atPeriodEnd = true) {
+        try {
+            const user = await client_1.prisma.user.findUnique({
+                where: { id: userId },
+                select: { stripeSubscriptionId: true, planId: true },
+            });
+            if (!user?.stripeSubscriptionId) {
+                throw new Error('No active subscription found');
+            }
+            // If user is on FREE plan, nothing to cancel
+            if (user.planId === 'FREE') {
+                return {
+                    success: false,
+                    message: 'You are already on the Free plan',
+                };
+            }
+            await stripe_service_1.StripeService.cancelSubscription(user.stripeSubscriptionId, atPeriodEnd);
+            if (!atPeriodEnd) {
+                // Immediate cancellation - downgrade to FREE now
+                await client_1.prisma.user.update({
+                    where: { id: userId },
+                    data: {
+                        planId: 'FREE',
+                        stripeSubscriptionId: null,
+                        updatedAt: new Date(),
+                    },
+                });
+                plan_gate_service_1.PlanGateService.clearUserPlanCache(userId);
+            }
+            logger_1.logger.info({ userId, atPeriodEnd }, 'Subscription cancelled');
+            return {
+                success: true,
+                message: atPeriodEnd
+                    ? 'Your subscription will be cancelled at the end of the billing period'
+                    : 'Your subscription has been cancelled immediately',
+            };
+        }
+        catch (error) {
+            logger_1.logger.error({ error, userId }, 'Failed to cancel subscription');
+            throw error;
+        }
+    }
+    /**
+     * Map Stripe status to internal status
+     */
+    static mapStripeStatus(stripeStatus) {
+        const statusMap = {
+            active: billing_types_1.SubscriptionStatus.ACTIVE,
+            past_due: billing_types_1.SubscriptionStatus.PAST_DUE,
+            unpaid: billing_types_1.SubscriptionStatus.UNPAID,
+            canceled: billing_types_1.SubscriptionStatus.CANCELLED,
+            incomplete: billing_types_1.SubscriptionStatus.INCOMPLETE,
+            incomplete_expired: billing_types_1.SubscriptionStatus.INCOMPLETE_EXPIRED,
+            trialing: billing_types_1.SubscriptionStatus.TRIALING,
+            paused: billing_types_1.SubscriptionStatus.PAUSED,
+        };
+        return statusMap[stripeStatus] || billing_types_1.SubscriptionStatus.INCOMPLETE;
+    }
+    /**
+     * Determine plan ID from Stripe price ID
+     */
+    static getPlanIdFromPriceId(priceId) {
+        const priceMap = {
+            [process.env.STRIPE_STARTER_MONTHLY_PRICE_ID]: 'STARTER',
+            [process.env.STRIPE_STARTER_YEARLY_PRICE_ID]: 'STARTER',
+            [process.env.STRIPE_PROFESSIONAL_MONTHLY_PRICE_ID]: 'PROFESSIONAL',
+            [process.env.STRIPE_PROFESSIONAL_YEARLY_PRICE_ID]: 'PROFESSIONAL',
+            [process.env.STRIPE_ENTERPRISE_MONTHLY_PRICE_ID]: 'ENTERPRISE',
+            [process.env.STRIPE_ENTERPRISE_YEARLY_PRICE_ID]: 'ENTERPRISE',
+        };
+        return priceMap[priceId] || 'FREE';
+    }
+    /**
+     * Handle subscription cancellation webhook
+     */
+    static async handleSubscriptionDeletion(stripeSubscriptionId) {
+        try {
+            const user = await client_1.prisma.user.findFirst({
+                where: { stripeSubscriptionId },
+            });
+            if (!user) {
+                logger_1.logger.warn({ stripeSubscriptionId }, 'User not found for subscription deletion');
+                return;
+            }
+            // Downgrade to FREE plan
+            await client_1.prisma.user.update({
+                where: { id: user.id },
+                data: {
+                    planId: 'FREE',
+                    stripeSubscriptionId: null,
+                    updatedAt: new Date(),
+                },
+            });
+            // Create plan history entry
+            await client_1.prisma.planHistory.create({
+                data: {
+                    userId: user.id,
+                    oldPlan: user.planId,
+                    newPlan: 'FREE',
+                    changedBy: 'stripe',
+                    reason: 'Subscription deleted',
+                    stripeEventId: stripeSubscriptionId,
+                },
+            });
+            // Clear cache
+            plan_gate_service_1.PlanGateService.clearUserPlanCache(user.id);
+            logger_1.logger.info({ userId: user.id, oldPlan: user.planId }, 'User downgraded to FREE due to subscription deletion');
+        }
+        catch (error) {
+            logger_1.logger.error({ error, stripeSubscriptionId }, 'Failed to handle subscription deletion');
+            throw error;
+        }
+    }
+    /**
+     * Get all users with expiring trials
+     */
+    static async getUsersWithExpiringTrials(daysThreshold = 3) {
+        try {
+            const thresholdDate = new Date();
+            thresholdDate.setDate(thresholdDate.getDate() + daysThreshold);
+            const users = await client_1.prisma.user.findMany({
+                where: {
+                    planId: { not: 'FREE' },
+                    planExpiresAt: {
+                        lte: thresholdDate,
+                        gt: new Date(),
+                    },
+                },
+                select: {
+                    id: true,
+                    email: true,
+                    planExpiresAt: true,
+                },
+            });
+            return users.map(user => ({
+                userId: user.id,
+                email: user.email,
+                trialEndsAt: user.planExpiresAt,
+            }));
+        }
+        catch (error) {
+            logger_1.logger.error({ error }, 'Failed to get users with expiring trials');
+            return [];
+        }
+    }
+}
+exports.SubscriptionService = SubscriptionService;
+//# sourceMappingURL=subscription.service.js.map
