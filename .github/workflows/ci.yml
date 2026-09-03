@@ -28,7 +28,9 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
-          cache-dependency-path: apps/api/package-lock.json
+          cache-dependency-path: |
+            apps/api/package-lock.json
+            apps/frontend/package-lock.json
 
       - name: Install dependencies (API)
         run: cd apps/api && npm ci
@@ -85,7 +87,9 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
-          cache-dependency-path: apps/api/package-lock.json
+          cache-dependency-path: |
+            apps/api/package-lock.json
+            apps/frontend/package-lock.json
 
       - name: Install dependencies (API)
         run: cd apps/api && npm ci
