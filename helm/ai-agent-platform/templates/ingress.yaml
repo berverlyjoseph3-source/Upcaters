@@ -1,34 +1,21 @@
 # enterprise-ai-agent-platform/helm/ai-agent-platform/templates/ingress.yaml
-{{- if .Values.ingress.enabled -}}
-{{- $fullName := include "ai-agent-platform.fullname" . -}}
-{{- $svcPort := .Values.app.service.port -}}
-{{- $frontendPort := .Values.frontend.service.port -}}
-{{- if and .Values.ingress.className (not (semverCompare ">=1.18-0" .Capabilities.KubeVersion.GitVersion)) }}
-  {{- if not (hasKey .Values.ingress.annotations "kubernetes.io/ingress.class") }}
-  {{- $_ := set .Values.ingress.annotations "kubernetes.io/ingress.class" .Values.ingress.className}}
-  {{- end }}
-{{- end }}
+{{- if .Values.ingress.enabled }}
+{{- $fullName := include "ai-agent-platform.fullname" . }}
+{{- $svcPort := .Values.app.service.port }}
+{{- $frontendPort := .Values.frontend.service.port }}
+
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: {{ $fullName }}
   labels:
     {{- include "ai-agent-platform.labels" . | nindent 4 }}
+  {{- with .Values.ingress.annotations }}
   annotations:
-    kubernetes.io/ingress.class: {{ .Values.ingress.className }}
-    cert-manager.io/cluster-issuer: {{ index .Values.ingress.annotations "cert-manager.io/cluster-issuer" | quote }}
-    nginx.ingress.kubernetes.io/ssl-redirect: "true"
-    nginx.ingress.kubernetes.io/proxy-body-size: "50m"
-    nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
-    nginx.ingress.kubernetes.io/proxy-send-timeout: "300"
-    nginx.ingress.kubernetes.io/websocket-services: {{ $fullName }}-api
-    nginx.ingress.kubernetes.io/configuration-snippet: |
-      proxy_set_header Upgrade $http_upgrade;
-      proxy_set_header Connection "upgrade";
-    {{- with .Values.ingress.annotations }}
     {{- toYaml . | nindent 4 }}
-    {{- end }}
+  {{- end }}
 spec:
+  ingressClassName: {{ .Values.ingress.className | quote }}
   tls:
     {{- range .Values.ingress.tls }}
     - hosts:
