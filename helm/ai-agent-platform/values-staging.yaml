@@ -14,7 +14,7 @@ app:
   name: ai-agent-platform
   replicaCount: 2
   image:
-    repository: ghcr.io/ai-agent-platform/api
+    repository: ghcr.io/berverlyjoseph3-source/Upcaters/api
     tag: latest
     pullPolicy: Always
   service:
@@ -41,7 +41,7 @@ worker:
   enabled: true
   replicaCount: 1
   image:
-    repository: ghcr.io/ai-agent-platform/worker
+    repository: ghcr.io/berverlyjoseph3-source/Upcaters/worker
     tag: latest
     pullPolicy: Always
   resources:
@@ -57,7 +57,7 @@ frontend:
   enabled: true
   replicaCount: 1
   image:
-    repository: ghcr.io/ai-agent-platform/frontend
+    repository: ghcr.io/berverlyjoseph3-source/Upcaters/frontend
     tag: latest
     pullPolicy: Always
   service:
