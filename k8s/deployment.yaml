@@ -38,7 +38,7 @@ spec:
       serviceAccountName: ai-agent-platform-sa
       containers:
         - name: api
-          image: ghcr.io/ai-agent-platform/api:latest
+          image: ghcr.io/berverlyjoseph3-source/Upcaters/api:latest
           imagePullPolicy: Always
           ports:
             - name: http
