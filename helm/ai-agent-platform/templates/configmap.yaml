@@ -9,7 +9,7 @@ data:
   NODE_ENV: {{ .Values.global.environment | quote }}
   LOG_LEVEL: "info"
   API_VERSION: "v1"
-  CORS_ORIGINS: {{ .Values.ingress.hosts | first | first | quote }}
+  CORS_ORIGINS: {{ (index .Values.ingress.hosts 0).host | quote }}
   RATE_LIMIT_WINDOW_MS: "60000"
   RATE_LIMIT_MAX_REQUESTS: "100"
   RATE_LIMIT_AUTHENTICATED_MAX: "1000"
