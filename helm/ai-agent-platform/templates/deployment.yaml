@@ -165,7 +165,7 @@ spec:
                   name: {{ include "ai-agent-platform.fullname" . }}-secrets
                   key: from-email
             - name: APP_URL
-              value: {{ .Values.ingress.hosts | first | first | quote }}
+              value: {{ (index .Values.ingress.hosts 0).host | quote }}
           envFrom:
             - configMapRef:
                 name: {{ include "ai-agent-platform.fullname" . }}-config
