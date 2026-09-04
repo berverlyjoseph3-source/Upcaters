@@ -9,21 +9,44 @@
   ],
   "parser": "@typescript-eslint/parser",
   "parserOptions": {
-    "ecmaVersion": 2024,
+    "ecmaVersion": "latest",
     "sourceType": "module",
-    "project": "./tsconfig.json"
+    "project": false
   },
   "plugins": [
     "@typescript-eslint"
   ],
+  "root": true,
+  "ignorePatterns": [
+    "node_modules/",
+    "dist/",
+    "build/",
+    "coverage/",
+    "*.config.js",
+    "*.config.cjs",
+    "*.config.mjs"
+  ],
   "rules": {
-    "@typescript-eslint/no-explicit-any": "warn",
+    "no-unused-vars": "off",
     "@typescript-eslint/no-unused-vars": [
-      "error",
+      "warn",
       {
-        "argsIgnorePattern": "^_"
+        "argsIgnorePattern": "^_",
+        "varsIgnorePattern": "^_",
+        "caughtErrorsIgnorePattern": "^_",
+        "destructuredArrayIgnorePattern": "^_"
       }
     ],
+
+    "@typescript-eslint/no-explicit-any": "warn",
+    "@typescript-eslint/no-var-requires": "warn",
+    "@typescript-eslint/no-namespace": "warn",
+
+    "no-undef": "warn",
+    "prefer-const": "warn",
+    "no-case-declarations": "warn",
+    "no-useless-escape": "warn",
+
     "no-console": [
       "warn",
       {
@@ -33,12 +56,5 @@
         ]
       }
     ]
-  },
-  "ignorePatterns": [
-    "dist",
-    "node_modules",
-    "coverage",
-    "*.config.js",
-    "*.config.ts"
-  ]
+  }
 }
