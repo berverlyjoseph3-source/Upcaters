@@ -12,7 +12,7 @@ on:
       - develop
 
 env:
-  NODE_VERSION: '20'
+  NODE_VERSION: '24'
   GO_VERSION: '1.21'
 
 jobs:
@@ -22,6 +22,19 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Generate package-lock.json files if missing
+        run: |
+          if [ ! -f "apps/api/package-lock.json" ]; then
+            echo "Generating apps/api/package-lock.json..."
+            cd apps/api && npm install --package-lock-only --legacy-peer-deps
+            cd ../..
+          fi
+          if [ ! -f "apps/frontend/package-lock.json" ]; then
+            echo "Generating apps/frontend/package-lock.json..."
+            cd apps/frontend && npm install --package-lock-only --legacy-peer-deps
+            cd ../..
+          fi
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -81,6 +94,19 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Generate package-lock.json files if missing
+        run: |
+          if [ ! -f "apps/api/package-lock.json" ]; then
+            echo "Generating apps/api/package-lock.json..."
+            cd apps/api && npm install --package-lock-only --legacy-peer-deps
+            cd ../..
+          fi
+          if [ ! -f "apps/frontend/package-lock.json" ]; then
+            echo "Generating apps/frontend/package-lock.json..."
+            cd apps/frontend && npm install --package-lock-only --legacy-peer-deps
+            cd ../..
+          fi
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
