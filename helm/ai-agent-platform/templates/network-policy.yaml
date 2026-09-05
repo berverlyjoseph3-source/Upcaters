@@ -45,6 +45,24 @@ spec:
           port: 6379
         - protocol: TCP
           port: 27017
+
+        # External MongoDB Atlas
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+      ports:
+        - protocol: TCP
+          port: 27017
+
+    # DNS resolution for MongoDB Atlas hostnames/SRV records
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+
     - to:
         - namespaceSelector: {}
       ports:
@@ -111,6 +129,24 @@ spec:
           port: 6379
         - protocol: TCP
           port: 27017
+
+        # External MongoDB Atlas
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+      ports:
+        - protocol: TCP
+          port: 27017
+
+    # DNS resolution for MongoDB Atlas hostnames/SRV records
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+
     - to:
         - namespaceSelector: {}
       ports:
