@@ -80,8 +80,8 @@ jobs:
             --set secrets.stripePublishableKey=${{ secrets.STRIPE_PUBLISHABLE_KEY }} \
             --set secrets.sendgridApiKey=${{ secrets.SENDGRID_API_KEY }} \
             --set secrets.fromEmail=${{ secrets.FROM_EMAIL }} \
-            --wait \
-            --timeout 10m
+            --atomic \
+            --timeout 15m
 
       - name: Verify deployment
         run: |
@@ -158,8 +158,8 @@ jobs:
             --set secrets.stripePublishableKey=${{ secrets.STRIPE_PUBLISHABLE_KEY }} \
             --set secrets.sendgridApiKey=${{ secrets.SENDGRID_API_KEY }} \
             --set secrets.fromEmail=${{ secrets.FROM_EMAIL }} \
-            --wait \
-            --timeout 10m
+            --atomic \
+            --timeout 15m
 
       - name: Verify deployment
         run: |
