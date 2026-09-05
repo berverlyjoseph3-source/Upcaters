@@ -53,6 +53,8 @@ jobs:
             --namespace ai-agent-platform \
             --create-namespace \
             --values ./helm/ai-agent-platform/values-staging.yaml \
+            --set app.image.tag=${{ github.sha }} \
+            --set frontend.image.tag=${{ github.sha }} \
             --set secrets.databaseUrl=${{ secrets.STAGING_DATABASE_URL }} \
             --set secrets.redisUrl=${{ secrets.STAGING_REDIS_URL }} \
             --set secrets.mongodbUrl=${{ secrets.STAGING_MONGODB_URL }} \
@@ -77,13 +79,15 @@ jobs:
             --set secrets.stripeWebhookSecret=${{ secrets.STRIPE_WEBHOOK_SECRET }} \
             --set secrets.stripePublishableKey=${{ secrets.STRIPE_PUBLISHABLE_KEY }} \
             --set secrets.sendgridApiKey=${{ secrets.SENDGRID_API_KEY }} \
-            --set secrets.fromEmail=${{ secrets.FROM_EMAIL }}
+            --set secrets.fromEmail=${{ secrets.FROM_EMAIL }} \
+            --wait \
+            --timeout 10m
 
       - name: Verify deployment
         run: |
           kubectl rollout status deployment/ai-agent-platform-api -n ai-agent-platform --timeout=5m
-          kubectl rollout status deployment/ai-agent-platform-worker -n ai-agent-platform --timeout=5m
-          kubectl rollout status deployment/ai-agent-platform-frontend -n ai-agent-platform --timeout=5m
+          kubectl get pods -n ai-agent-platform
+          kubectl describe deployment ai-agent-platform-api -n ai-agent-platform
 
       - name: Notify Slack
         uses: slackapi/slack-github-action@v1.25.0
@@ -127,6 +131,8 @@ jobs:
             --namespace ai-agent-platform \
             --create-namespace \
             --values ./helm/ai-agent-platform/values-prod.yaml \
+            --set app.image.tag=${{ github.sha }} \
+            --set frontend.image.tag=${{ github.sha }} \
             --set secrets.databaseUrl=${{ secrets.PROD_DATABASE_URL }} \
             --set secrets.redisUrl=${{ secrets.PROD_REDIS_URL }} \
             --set secrets.mongodbUrl=${{ secrets.PROD_MONGODB_URL }} \
@@ -151,13 +157,15 @@ jobs:
             --set secrets.stripeWebhookSecret=${{ secrets.STRIPE_WEBHOOK_SECRET }} \
             --set secrets.stripePublishableKey=${{ secrets.STRIPE_PUBLISHABLE_KEY }} \
             --set secrets.sendgridApiKey=${{ secrets.SENDGRID_API_KEY }} \
-            --set secrets.fromEmail=${{ secrets.FROM_EMAIL }}
+            --set secrets.fromEmail=${{ secrets.FROM_EMAIL }} \
+            --wait \
+            --timeout 10m
 
       - name: Verify deployment
         run: |
           kubectl rollout status deployment/ai-agent-platform-api -n ai-agent-platform --timeout=10m
-          kubectl rollout status deployment/ai-agent-platform-worker -n ai-agent-platform --timeout=10m
-          kubectl rollout status deployment/ai-agent-platform-frontend -n ai-agent-platform --timeout=10m
+          kubectl get pods -n ai-agent-platform
+          kubectl describe deployment ai-agent-platform-api -n ai-agent-platform
 
       - name: Smoke tests
         run: |
